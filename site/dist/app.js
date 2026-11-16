@@ -65,7 +65,7 @@ function renderRanking(ranked,total){const max=ranked[0]?.total||1,container=doc
 function renderTicker(ranked){const content=ranked.map((d,i)=>`<span><b>#${i+1}</b> ${d.channel} <strong>${money(d.total)}</strong></span>`).join('<i>◆</i>');document.querySelector('#tickerTrack').innerHTML=content+content}
 function renderChart(){
   const history=snapshotHistory;
-  document.querySelector('#chartTitle').textContent='GMV POR ATUALIZAÇÃO (30 MIN)';
+  document.querySelector('#chartTitle').textContent='GMV HORA A HORA';
   document.querySelector('#chartLegend').innerHTML=isUpdating?'<i class="orange"></i> Nova janela em processamento':'<i class="orange"></i> Incrementos confirmados';
   if(!history.length){document.querySelector('#axis').innerHTML=[0,0,0,0,0].map(money).map(v=>`<span>${v}</span>`).join('');document.querySelector('#hourlyChart').innerHTML='';document.querySelector('#peakLabel').textContent='Nenhum snapshot registrado';return}
   let points=history.map((s,i)=>({label:s.slot,value:i===0?Number(s.gmv||0):Number(s.deltaGmv||0),baseline:i===0,total:s.gmv}));
