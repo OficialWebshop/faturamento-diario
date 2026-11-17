@@ -1,0 +1,81 @@
+/* Keep the ranking and hourly chart as the main dashboard content. */
+.hero-grid{grid-template-columns:repeat(4,minmax(0,1fr))}
+.metric.featured>strong{font-size:30px}
+.executive-kpis{grid-template-columns:repeat(3,minmax(0,1fr))!important}
+.content-grid{grid-template-columns:1fr 1fr;gap:12px}
+.content-grid>.panel{min-width:0;min-height:460px}
+.ranking-panel{display:flex;flex-direction:column}
+.ranking{flex:1;min-height:0;overflow:auto}
+.hourly-panel .chart-wrap{min-height:320px}
+.shell,.report-view,.hero-grid>*{min-width:0}
+@media(min-width:1200px){
+  body{overflow:auto}
+  .shell{height:auto;min-height:100vh}
+  #dashboardView.active{display:flex;flex-direction:column;flex:1;min-height:0}
+  .metric.featured{min-height:96px}
+  .content-grid{flex:1}
+  .content-grid>.panel{min-height:460px;height:auto}
+  .ranking{height:auto}
+}
+@media(min-width:761px) and (max-width:1199px){
+  .topbar{flex-wrap:wrap;gap:16px}
+  .actions{flex:1;justify-content:flex-start}
+  .hero-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .executive-kpis{grid-template-columns:1fr!important}
+  .content-grid{grid-template-columns:1fr}
+}
+@media(max-width:760px){
+  .topbar{grid-template-columns:minmax(0,1fr);gap:12px}
+  .brand{width:100%}
+  .brand h1{font-size:clamp(19px,5.5vw,28px);white-space:normal}
+  .brand img{flex:0 0 48px}
+  .actions{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px;margin:0;min-width:0}
+  .actions .date-filter,.actions #refreshBtn{grid-column:auto;grid-row:auto;width:100%;min-width:0;height:46px}
+  .actions #refreshBtn{justify-content:center;font-size:11px;padding:0 8px}
+  .actions .status{grid-column:1/-1;grid-row:auto;justify-content:flex-start}
+  .status small{display:block;font-size:8px}
+  .status strong{font-size:11px}
+  .view-tabs{height:auto;align-items:stretch}
+  .view-tab{min-height:44px;letter-spacing:.06em}
+  .scope-buttons{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:5px;overflow:visible}
+  .scope-button{height:40px;padding:0 4px;font-size:10px}
+  .hero-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .metric.featured,.metric.target{grid-column:1/-1;min-height:96px}
+  .metric.featured>strong{font-size:30px;margin:9px 0 6px}
+  .metric-top{gap:6px;flex-wrap:wrap}
+  .leader{gap:7px;flex-wrap:wrap}
+  .leader strong{font-size:20px;overflow-wrap:anywhere}
+  .executive-kpis{display:grid!important;grid-template-columns:1fr!important;margin:0 0 8px;padding:0;overflow:visible}
+  .monitor-card.kpi-cluster{min-width:0;gap:8px!important}
+  .cluster-side{min-width:74px;padding-left:8px}
+  .management-grid{display:grid;grid-template-columns:minmax(0,1fr);margin:0 0 8px;padding:0;overflow:visible}
+  .management-card{min-width:0;gap:10px;grid-template-columns:repeat(2,minmax(0,1fr));padding:15px 12px}
+  .management-card>div:last-child:not(.stream-health){display:block}
+  .management-card .operation-split{display:grid;grid-column:auto}
+  .management-card .hidden-ticket{display:none!important}
+  .content-grid{display:flex;flex-direction:column;gap:12px}
+  .content-grid>.panel{min-height:400px;padding:12px}
+  .hourly-panel{order:0}
+  .ranking-panel{order:1}
+  .hourly-panel .panel-head{grid-template-columns:minmax(0,1fr);gap:12px}
+  .hourly-panel select{width:100%;max-width:none;min-height:44px;font-size:12px}
+  .hourly-panel .chart-wrap{height:300px;min-height:300px;flex:none;grid-template-columns:35px minmax(540px,1fr);overflow-x:auto}
+  .bars{min-width:540px}
+  .chart-summary{flex-wrap:wrap;gap:8px}
+  .chart-summary span{max-width:100%;font-size:10px}
+  .chart-summary strong{margin-left:0;text-align:left}
+  .ranking{max-height:none;overflow:visible}
+  .rank-row{grid-template-columns:22px 30px minmax(0,1fr) 82px;gap:6px;min-height:58px}
+  .channel-name{min-width:0;overflow-wrap:anywhere}
+  .channel-name strong{font-size:11px}
+  .rank-meta{flex-shrink:0}
+  .legend{font-size:8px}
+  .analytics-view{height:auto;min-height:0;padding:12px}
+  .analytics-kpis{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;margin-top:12px}
+  .analytics-kpis span{min-width:0;padding:8px}
+  .analytics-kpis b{font-size:18px;overflow-wrap:anywhere}
+  .analytics-controls input,.analytics-controls select{width:100%;min-width:0;min-height:44px;font-size:16px}
+  .date-filter input{min-width:0;width:100%;font-size:16px}
+  .analytics-table-wrap{height:auto;max-height:68vh}
+  #toast{left:12px;right:12px;bottom:12px}
+}

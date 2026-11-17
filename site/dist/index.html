@@ -7,7 +7,6 @@
   <title>Black Friday Oficial 2026 — Hora a Hora</title>
   <link rel="icon" type="image/png" href="assets/Monograma OF cinza e laranja.png" />
   <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:ital,wght@0,600;0,700;0,800;0,900;1,800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="styles.css" />
@@ -15,6 +14,13 @@
   <link rel="stylesheet" href="upgrade.css" />
   <link rel="stylesheet" href="commercial.css" />
   <link rel="stylesheet" href="analytics-tab.css" />
+  <link rel="stylesheet" href="history-upgrade.css" />
+  <link rel="stylesheet" href="streaming.css" />
+  <link rel="stylesheet" href="executive-redesing.css" />
+  <link rel="stylesheet" href="carosel.css" />
+  <link rel="stylesheet" href="bigtech.css" />
+  <link rel="stylesheet" href="business-gradient.css" />
+  <link rel="stylesheet" href="dashboard-layout.css" />
 </head>
 <body>
   <div class="noise"></div>
@@ -26,42 +32,37 @@
       </div>
       <div class="official-mark"><span>POWERED BY</span><img src="assets/oficial-logo.png" alt="Oficial Webshop"></div>
       <div class="actions">
+        <label class="date-filter"><small>DATA DO PAINEL</small><input id="dashboardDate" type="date" value="2026-11-11"></label>
         <label class="upload" title="Importar CSV"><input id="fileInput" type="file" accept=".csv,text/csv"/><span>↑</span> Importar base</label>
         <button id="refreshBtn"><span class="refresh-icon">↻</span> Atualizar dados</button>
-        <button id="queueToggleBtn" class="queue-btn" type="button" title="Consultar ou pausar fila de atualização">Fila: <b id="queueBadge">OK</b></button>
         <div class="status" id="updateStatus"><i></i><div><small id="statusLabel">ÚLTIMA ATUALIZAÇÃO</small><strong id="lastUpdate">—</strong></div></div>
       </div>
     </header>
 
-    <section id="queuePanel" class="queue-panel" hidden aria-label="Fila de sincronização Tiny">
-      <div class="queue-head">
-        <div><span class="kicker">CONTROLE DE COLETA TINY</span><h3>FILA DE CONSULTAS &amp; RETRY EXPONENCIAL</h3><p id="queueSummaryText">Fila ociosa — sem pendências.</p></div>
-        <div class="queue-actions">
-          <button id="queueRefreshBtn" type="button" class="queue-action-btn">Atualizar fila</button>
-          <button id="queueFullSyncBtn" type="button" class="queue-action-btn" title="Forçar reconciliação completa de todos os pedidos do dia">Reconciliação completa</button>
-          <button id="queuePauseResumeBtn" type="button" class="queue-action-btn warn">Pausar fila</button>
-        </div>
-      </div>
-      <div id="queueAccounts" class="queue-accounts"></div>
-    </section>
-
     <nav class="view-tabs" aria-label="Navegação do relatório"><button class="view-tab active" data-view="dashboardView">PAINEL EXECUTIVO</button><button class="view-tab" data-view="analyticsView">TABELA ANALÍTICA</button></nav>
+    <section class="scope-carousel" aria-label="Visão por operação"><div><small>VISÃO EM EXIBIÇÃO</small><strong id="scopeTitle">CONSOLIDADO</strong></div><div class="scope-buttons"><button class="scope-button active" data-scope="Consolidado">Consolidado</button><button class="scope-button" data-scope="Oficial">Oficial</button><button class="scope-button" data-scope="Full">Full</button><button class="scope-button" data-scope="Prioriza">Prioriza</button></div><div class="scope-timer"><i id="scopeProgress"></i><span>Próxima visão em <b id="scopeCountdown">60s</b></span></div></section>
 
     <div id="dashboardView" class="report-view active">
     <section class="hero-grid">
       <article class="metric featured"><div class="metric-top"><span>GMV TOTAL</span><b>ACUMULADO</b></div><strong id="totalGMV">R$ 0</strong><div class="delta" id="totalDelta">▲ 0% vs. hora anterior</div><div class="spark" id="sparkline"></div></article>
-      <article class="metric"><div class="metric-top"><span>GMV ÚLTIMO SNAPSHOT</span><b id="currentHour">—</b></div><strong id="hourGMV">R$ 0</strong><div class="delta" id="hourDelta">▲ 0% vs. snapshot anterior</div><div class="progress"><i id="hourProgress"></i></div></article>
+      <article class="metric"><div class="metric-top"><span>GMV ÚLTIMA HORA</span><b id="currentHour">—</b></div><strong id="hourGMV">R$ 0</strong><div class="delta" id="hourDelta">Hora em andamento</div><div class="progress"><i id="hourProgress"></i></div></article>
       <article class="metric"><div class="metric-top"><span>CANAL LÍDER</span><b>#1</b></div><div class="leader"><div id="leaderIcon" class="channel-icon lg">?</div><div><strong id="leaderName">—</strong><small id="leaderShare">0% do GMV</small></div></div><div class="progress"><i id="leaderProgress"></i></div></article>
-      <article class="metric target"><div class="metric-top"><span>ATINGIMENTO DA META</span><b id="targetAmount">—</b></div><strong id="targetValue">0%</strong><div class="target-bar"><i id="targetProgress"></i><span></span></div><small id="targetGap">Aguardando primeira carga do dia</small></article>
+      <article class="metric target"><div class="metric-top"><span>ATINGIMENTO DA META</span><b id="targetLabel">R$ 0</b></div><strong id="targetValue">0%</strong><div class="target-bar"><i id="targetProgress"></i><span></span></div><small id="targetGap">Meta diária automática</small></article>
     </section>
 
-    <section class="monitor-grid" aria-label="Indicadores de monitoramento">
-      <article class="monitor-card"><div class="monitor-icon">▣</div><div><small>PEDIDOS DO DIA</small><strong id="ordersKpi">0</strong><span>Monitorando entrada</span></div></article>
-      <article class="monitor-card"><div class="monitor-icon">R$</div><div><small>TICKET MÉDIO</small><strong id="ticketKpi">R$ 0</strong><span>Valor médio por pedido</span></div></article>
-      <article class="monitor-card"><div class="monitor-icon">◉</div><div><small>CANAIS ATIVOS</small><strong id="activeKpi">0</strong><span id="activeLabel">Com venda no dia</span></div></article>
-      <article class="monitor-card"><div class="monitor-icon">◆</div><div><small>CONCENTRAÇÃO TOP 3</small><strong id="top3Kpi">0%</strong><span>Participação no GMV</span></div></article>
-      <article class="monitor-card pulse-card"><div class="monitor-icon">↗</div><div><small>RITMO DA OPERAÇÃO</small><strong id="paceKpi">Estável</strong><span id="paceLabel">Aguardando próxima hora</span></div></article>
+    <section class="monitor-grid executive-kpis" aria-label="Indicadores operacionais">
+      <article class="monitor-card kpi-cluster"><div class="monitor-icon">▣</div><div class="cluster-main"><small>FLUXO DE PEDIDOS</small><strong id="ordersKpi">0</strong><span>Pedidos confirmados no dia</span></div><div class="cluster-side"><small>ÚLTIMA HORA</small><b id="hourOrdersKpi">0</b><span>pedidos</span></div></article>
+      <article class="monitor-card kpi-cluster"><div class="monitor-icon">R$</div><div class="cluster-main"><small>EFICIÊNCIA COMERCIAL</small><strong id="ticketKpi">R$ 0</strong><span>Ticket médio consolidado</span></div><div class="cluster-side"><small>CANAIS ATIVOS</small><b id="activeKpi">0</b><span id="activeLabel">com venda</span></div></article>
+      <article class="monitor-card kpi-cluster pulse-card"><div class="monitor-icon">↗</div><div class="cluster-main"><small>SAÚDE DA OPERAÇÃO</small><strong id="paceKpi">Estável</strong><span id="paceLabel">Ritmo da hora atual</span></div><div class="cluster-side"><small>CONCENTRAÇÃO TOP 3</small><b id="top3Kpi">0%</b><span>do GMV</span></div></article>
     </section>
+
+    <section class="management-grid" aria-label="Realizado por operação">
+      <article class="management-card consolidated"><div><small>VISÃO GERENCIAL</small><h3>CONSOLIDADO</h3><span class="scope-note">Todas as contas e modalidades</span></div><div><small>GMV REALIZADO</small><strong id="consolidatedGmv">R$ 0</strong></div><div><small>PEDIDOS</small><b id="consolidatedOrders">0</b></div><div><small>TICKET</small><span id="consolidatedTicket">R$ 0</span></div><div class="stream-health"><i></i><span>STREAMING ATIVO</span></div></article>
+      <article class="management-card official"><div><small>OPERAÇÃO</small><h3>OFICIAL TOTAL</h3><span class="scope-note">Principal + contas Full</span></div><div><small>GMV REALIZADO</small><strong id="officialGmv">R$ 0</strong></div><div class="operation-split"><span><small>PRINCIPAL</small><b id="officialCoreGmv">R$ 0</b></span><span><small>FULL</small><b id="fullOfficialGmv">R$ 0</b></span></div><div><small>PEDIDOS</small><b id="officialOrders">0</b><span class="hidden-ticket" id="officialTicket">R$ 0</span></div></article>
+      <article class="management-card prioriza"><div><small>OPERAÇÃO</small><h3>PRIORIZA</h3><span class="scope-note">Conta Prioriza</span></div><div><small>GMV REALIZADO</small><strong id="priorizaGmv">R$ 0</strong></div><div><small>PEDIDOS</small><b id="priorizaOrders">0</b></div><div><small>TICKET</small><span id="priorizaTicket">R$ 0</span></div></article>
+    </section>
+    <div id="smartAlert" class="smart-alert" hidden></div>
+    <div id="dataQualityAlert" class="data-quality-alert" hidden></div>
 
     <section class="content-grid">
       <article class="panel ranking-panel">
@@ -69,9 +70,9 @@
         <div id="ranking" class="ranking"></div>
       </article>
       <article class="panel hourly-panel">
-        <div class="panel-head"><div><span class="kicker">RITMO DE VENDAS</span><h2 id="chartTitle">PROJEÇÃO DO DIA</h2></div><select id="channelFilter" aria-label="Filtrar canal"><option value="all">Todos os canais</option></select></div>
+        <div class="panel-head"><div><span class="kicker">RITMO DE VENDAS</span><h2 id="chartTitle">GMV INCREMENTAL POR HORA</h2></div><select id="channelFilter" aria-label="Filtrar canal"><option value="all">Todos os canais</option></select></div>
         <div class="chart-wrap"><div class="axis" id="axis"></div><div class="bars" id="hourlyChart"></div></div>
-        <div class="chart-summary"><span id="chartLegend"><i class="orange"></i> Projeção por faixa horária</span><strong id="peakLabel">Fechamento projetado: —</strong></div>
+        <div class="chart-summary"><span id="chartLegend"><i class="orange"></i> Cada barra contém somente as vendas da respectiva hora</span><strong id="peakLabel">Pico horário: —</strong></div>
       </article>
     </section>
     <section class="sales-ticker"><strong>PLACAR AO VIVO</strong><div class="ticker-window"><div id="tickerTrack" class="ticker-track">Carregando canais...</div></div></section>
@@ -79,14 +80,12 @@
     </div>
     <section id="analyticsView" class="report-view analytics-view">
       <div class="analytics-head"><div><span class="kicker">RAIO X OPERACIONAL</span><h2>TABELA ANALÍTICA DE PEDIDOS</h2><p>Conferência da origem, empresa, situação e valor de cada pedido capturado hoje.</p></div><div class="analytics-kpis"><span><small>PEDIDOS</small><b id="analyticOrders">0</b></span><span><small>GMV</small><b id="analyticGmv">R$ 0</b></span><span><small>DETALHES COMPLETOS</small><b id="analyticComplete">0%</b></span></div></div>
-      <div class="analytics-controls"><input id="analyticSearch" type="search" placeholder="Buscar pedido, canal, e-commerce ou Fulfillment"><select id="analyticCompany"><option value="all">Todas as empresas</option><option>Oficial</option><option>Prioriza</option><option>OFICIALSP</option><option>OFICIALSP2</option></select><select id="analyticChannel"><option value="all">Todos os canais</option></select><select id="analyticFulfillment" aria-label="Filtrar modalidade"><option value="all">Todas as modalidades</option><option value="fulfillment">Somente Fulfillment</option><option value="padrao">Somente Padrão</option></select></div>
-      <div class="analytics-table-wrap"><table class="analytics-table"><thead><tr><th>Pedido</th><th>Empresa</th><th>Canal padrão</th><th>E-commerce Tiny</th><th>Modalidade</th><th>Situação</th><th>Detalhe</th><th>Valor</th></tr></thead><tbody id="analyticsRows"></tbody></table></div>
+      <div class="analytics-controls"><input id="analyticSearch" type="search" placeholder="Buscar pedido, canal, marcador ou e-commerce"><select id="analyticCompany"><option value="all">Todas as empresas</option></select><select id="analyticChannel"><option value="all">Todos os canais</option></select></div>
+      <div class="analytics-table-wrap"><table class="analytics-table"><thead><tr><th>Pedido</th><th>Conta</th><th>Canal padrão</th><th>Modalidade</th><th>E-commerce Tiny</th><th>Situação</th><th>Detalhe</th><th>Valor</th></tr></thead><tbody id="analyticsRows"></tbody></table></div>
     </section>
-    <footer><span>BLACK FRIDAY OFICIAL 2026</span><p>Fonte oficial • Tiny API Oficial + Prioriza + OFICIALSP + OFICIALSP2 • AUTO 3 MIN • TEMPO REAL</p><div>REMADA BLACK <b>● AO VIVO</b></div></footer>
+    <footer><span>BLACK FRIDAY OFICIAL 2026</span><p>Fonte oficial • Tiny API Oficial + Prioriza • EVENTOS EM TEMPO REAL • CONSOLIDAÇÃO HORÁRIA</p><div>REMADA BLACK <b>● AO VIVO</b></div></footer>
   </main>
   <div id="toast" role="status"></div>
-  <script src="daily-targets.js"></script>
-  <script src="order-classifier.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
