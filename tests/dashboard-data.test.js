@@ -57,7 +57,8 @@ test('actual frontend consumes legacy response and displays executive KPIs and m
   assert.match(elements.get('#ranking').innerHTML,/Meli/);
   assert.match(elements.get('#hourlyChart').innerHTML,/08h: R\$\s*100/);
   assert.equal(vm.runInContext('hours.length',context),24);
-  vm.runInContext("applyScope('Prioriza')",context);
-  assert.equal(elements.get('#totalGMV').textContent,'R$ 50');
-  assert.match(elements.get('#hourlyChart').innerHTML,/histórico legado/);
+  await vm.runInContext('loadBigQuery(false)',context);
+  assert.equal(vm.runInContext('activeScope',context),'Consolidado');
+  assert.equal(elements.get('#totalGMV').textContent,'R$ 200');
+  assert.doesNotMatch(html,/scope-carousel|scopeCountdown|data-scope=/);
 });
