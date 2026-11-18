@@ -35,7 +35,15 @@ html,body{margin:0;padding:0;width:100vw;height:100vh;height:100dvh;overflow:hid
 .hourly-panel .chart-wrap{flex:1;min-height:0;height:auto;grid-template-columns:38px minmax(0,1fr);padding:8px 0 24px;overflow:hidden}
 .bars{min-width:0;gap:3px}.bar-group{min-width:0}.bar-group label{font-size:8px}
 .chart-summary{flex-shrink:0;padding:7px 3px;gap:8px;min-height:0;font-size:9px}.chart-summary strong{white-space:normal;margin-left:0}.chart-summary span{max-width:65%}
-.sales-ticker,.insight-strip,footer{display:none}
+.sales-ticker{display:flex;flex-shrink:0;margin:0;min-height:22px}
+.insight-strip{display:grid;flex-shrink:0;margin:0;padding:5px 10px;min-height:24px}
+footer{display:flex;flex-shrink:0;margin:0;min-height:16px;font-size:8px;gap:8px}
+@media(max-width:760px){
+  .insight-strip{grid-template-columns:1fr auto;gap:6px;padding:4px 8px}
+  .insight-strip p,footer p{display:none}
+  footer{font-size:6px;letter-spacing:0;justify-content:space-between}
+  .sales-ticker{min-height:20px;font-size:8px}
+}
 .pagination{display:flex;align-items:center;justify-content:center;gap:12px;flex-shrink:0;padding-top:5px;font-size:10px;color:#aaa}
 .pagination button,.mobile-panels button{border:1px solid #444;border-radius:6px;background:#191b1d;color:#fff;cursor:pointer;padding:5px 12px;min-height:28px}
 .pagination button:disabled{opacity:.3;cursor:default}

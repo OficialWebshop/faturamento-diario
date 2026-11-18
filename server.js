@@ -381,6 +381,7 @@ function buildPayload(all) {
     const item = {
       at: snapshot.at,
       slot: snapshot.slot || slotKey(snapshot.at),
+      business: snapshot.business || [],
       gmv,
       orders: orderCount,
       isBaseline: index === 0,

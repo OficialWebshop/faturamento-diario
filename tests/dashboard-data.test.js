@@ -38,6 +38,26 @@ test('modern views pass through and empty payloads stay empty',()=>{
   assert.equal(normalize(modern),modern);
   assert.deepEqual(normalize({}).views[0].series,[]);
 });
+test('Oficial hourly chart uses company snapshots and excludes Prioriza',()=>{
+  const history = [
+    {slot:'08:00',business:[{empresa:'Oficial',canal:'Meli',gmv:80},{empresa:'Prioriza',canal:'Meli',gmv:30}]},
+    {slot:'08:30',business:[{empresa:'Oficial',canal:'Meli',gmv:100},{empresa:'Prioriza',canal:'Meli',gmv:50}]},
+    {slot:'18:00',business:[{empresa:'Oficial',canal:'Meli',gmv:100},{empresa:'Oficial',canal:'Amazon',gmv:50},{empresa:'Prioriza',canal:'Meli',gmv:50}]}
+  ];
+  const result=normalize({...payload,snapshotHistory:history});
+  const official=result.views.find(view=>view.scope==='Oficial');
+  assert.equal(official.hourlyUnavailable,undefined);
+  assert.equal(official.series.find(row=>row.channel==='Meli').hours[8].value,100);
+  assert.equal(official.series.find(row=>row.channel==='Amazon').hours[18].value,50);
+  assert.equal(official.series.flatMap(row=>row.hours).reduce((sum,point)=>sum+point.value,0),150);
+  assert.deepEqual(official.previousChannels,{Meli:100});
+  // Verify the actual server response carries the saved company history.
+  const server=fs.readFileSync('server.js','utf8');
+  const build=server.slice(server.indexOf('function buildPayload(all)'),server.indexOf('function hasFullDetail'));
+  const context=vm.createContext({brDate:()=>payload.dataDate,num:Number,getDailyTargetValue:()=>0,SOURCE_LABEL:'test',slotKey:()=>'',snapshots:history.map((row,i)=>({...row,dataDate:payload.dataDate,at:`2026-11-17T${String(11+i).padStart(2,'0')}:00:00Z`,channels:{Meli:100},orders:{Meli:1}}))});
+  vm.runInContext(build,context);
+  assert.equal(vm.runInContext('buildPayload(snapshots).snapshotHistory[0].business[0].gmv',context),80);
+});
 test('actual frontend consumes legacy response and displays executive KPIs and morning history',async()=>{
   const html=fs.readFileSync('site/dist/index.html','utf8');
   const elements=new Map([...html.matchAll(/id="([^"]+)"/g)].map(m=>['#'+m[1],{
