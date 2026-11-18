@@ -88,7 +88,7 @@ test('Full and Prioriza hourly charts use their own snapshot values',()=>{
 test('actual frontend consumes legacy response and displays executive KPIs and morning history',async()=>{
   const html=fs.readFileSync('site/dist/index.html','utf8');
   const elements=new Map([...html.matchAll(/id="([^"]+)"/g)].map(m=>['#'+m[1],{
-    textContent:'',innerHTML:'',value:'all',style:{},classList:{add(){},remove(){},toggle(){}},setAttribute(){},listeners:{},addEventListener(type,callback){this.listeners[type]=callback}
+    textContent:'',innerHTML:'',value:'all',style:{},classList:{add(){},remove(){},toggle(){}},setAttribute(){},open:false,showModal(){this.open=true},close(){this.open=false},listeners:{},addEventListener(type,callback){this.listeners[type]=callback}
   }]));
   const health={classList:{toggle(){}},querySelector:()=>({textContent:''})};
   const context=vm.createContext({Intl,Date,console,document:{body:{classList:{toggle(){}}},
@@ -137,6 +137,10 @@ test('actual frontend consumes legacy response and displays executive KPIs and m
   const chart=elements.get('#hourlyChart');
   chart.listeners.click({target:{closest:()=>({dataset:{hourIndex:'8'}})}});
   assert.match(elements.get('#chartLegend').textContent,/08h.*Consolidado.*100,00/);
+  assert.equal(elements.get('#hourDetails').open,true);
+  assert.match(elements.get('#hourDetailsValues').textContent,/Total realizado:.*100,00[\s\S]*Meli:.*100,00/);
+  elements.get('#hourDetailsClose').listeners.click();
+  assert.equal(elements.get('#hourDetails').open,false);
   vm.runInContext("activeChannel='Amazon'; renderChart()",context);
   assert.match(elements.get('#chartLegend').textContent,/08h.*Amazon.*0,00/);
   let prevented=false;
@@ -146,5 +150,23 @@ test('actual frontend consumes legacy response and displays executive KPIs and m
   assert.match(elements.get('#chartLegend').textContent,/08h/);
   vm.runInContext("activeChannel='all';renderChart()",context);
   assert.match(elements.get('#hourlyChart').innerHTML,/data-hour-index="8" role="button" tabindex="0"/);
+  // A Full view with zero channels must clear all content from the previous scope.
+  vm.runInContext("perspectiveViews=perspectiveViews.filter(view=>view.scope!=='Full');perspectiveViews.push({scope:'Full',currentChannels:{Meli:0},previousChannels:{},series:[{channel:'Meli',hours:hours.map(hour=>({hour,value:0}))}]}); applyScope('Full');",context);
+  assert.equal(elements.get('#totalGMV').textContent,'R$ 0');
+  assert.equal(elements.get('#leaderName').textContent,'Aguardando vendas');
+  assert.equal(elements.get('#targetValue').textContent,'0.0%');
+  assert.equal(elements.get('#ordersKpi').textContent,'0');
+  assert.equal(elements.get('#hourOrdersKpi').textContent,'0');
+  assert.doesNotMatch(elements.get('#ranking').innerHTML,/Meli/);
+  assert.doesNotMatch(elements.get('#hourlyChart').innerHTML,/data-hour-index|100,00/);
+  assert.equal(elements.get('#hourDetails').open,false);
+  assert.equal(vm.runInContext('lastRanking.length',context),0);
+  // Clicking a nonempty Full series reads only that operation's hourly values.
+  vm.runInContext("perspectiveViews.find(view=>view.scope==='Full').currentChannels={Meli:50};perspectiveViews.find(view=>view.scope==='Full').series[0].hours[8].value=50;applyScope('Full');",context);
+  chart.listeners.click({target:{closest:()=>({dataset:{hourIndex:'8'}})}});
+  assert.match(elements.get('#hourDetailsTitle').textContent,/08h.*Full/);
+  assert.match(elements.get('#hourDetailsValues').textContent,/Total realizado:.*50,00/);
+  assert.doesNotMatch(elements.get('#hourDetailsValues').textContent,/100,00/);
+
 
 });

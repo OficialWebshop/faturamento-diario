@@ -56,6 +56,12 @@ footer{display:flex;flex-shrink:0;margin:0;min-height:16px;font-size:8px;gap:8px
 #hourlyChart [data-hour-index]{cursor:pointer}
 #hourlyChart [data-hour-index]:focus-visible{outline:2px solid #fff;outline-offset:-2px}
 #hourlyChart [data-hour-index][aria-pressed=true] .bar{outline:2px solid #ffd1ad;outline-offset:-2px;filter:brightness(1.15)}
+#hourDetails{margin:auto;width:min(420px,92vw);max-height:80dvh;overflow:auto;padding:18px;border:1px solid #ff6a00;border-radius:10px;background:#141719;color:#f7f7f4;box-shadow:0 20px 70px #000b}
+#hourDetails::backdrop{background:#0009}
+.hour-details-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:16px}
+.hour-details-head h2{font-size:24px}
+#hourDetailsClose{background:#272b2e;border:1px solid #555;border-radius:6px;padding:8px 12px;color:#fff;cursor:pointer}
+#hourDetailsValues{white-space:pre-wrap;font-size:14px;line-height:1.8}
 .analytics-view.active{display:flex;flex-direction:column;height:auto;min-height:0;padding:12px}
 .analytics-head{flex-shrink:0;gap:12px;padding-bottom:10px}.analytics-head h2{font-size:24px}
 .analytics-kpis span{min-width:95px;padding:7px 10px}.analytics-controls{flex-shrink:0;padding:9px 0}
