@@ -58,6 +58,33 @@ test('Oficial hourly chart uses company snapshots and excludes Prioriza',()=>{
   vm.runInContext(build,context);
   assert.equal(vm.runInContext('buildPayload(snapshots).snapshotHistory[0].business[0].gmv',context),80);
 });
+test('Full and Prioriza hourly charts use their own snapshot values',()=>{
+  const snapshotHistory = [
+    {slot:'08:00',business:[
+      {empresa:'Oficial',canal:'Amazon',gmv:300,fullGmv:40},
+      {empresa:'OFICIALSP',canal:'Shopee',gmv:20},
+      {empresa:'OFICIALSP2',canal:'Meli',gmv:10},
+      {empresa:'Prioriza',canal:'Shopee',gmv:30,fullGmv:30}
+    ]},
+    {slot:'09:30',business:[
+      {empresa:'Oficial',canal:'Amazon',gmv:500,fullGmv:70},
+      {empresa:'OFICIALSP',canal:'Shopee',gmv:45},
+      {empresa:'OFICIALSP2',canal:'Meli',gmv:15},
+      {empresa:'Prioriza',canal:'Shopee',gmv:80,fullGmv:80}
+    ]}
+  ];
+  const views=normalize({...payload,snapshotHistory}).views;
+  const full=views.find(view=>view.scope==='Full'),prioriza=views.find(view=>view.scope==='Prioriza');
+  assert.equal(full.hourlyUnavailable,undefined);
+  assert.equal(prioriza.hourlyUnavailable,undefined);
+  const totalAt=(view,hour)=>view.series.reduce((sum,row)=>sum+row.hours[hour].value,0);
+  assert.equal(totalAt(full,8),70);
+  assert.equal(totalAt(full,9),60);
+  assert.equal(totalAt(prioriza,8),30);
+  assert.equal(totalAt(prioriza,9),50);
+  assert.equal(full.series.find(row=>row.channel==='Amazon').hours[9].value,30);
+});
+
 test('actual frontend consumes legacy response and displays executive KPIs and morning history',async()=>{
   const html=fs.readFileSync('site/dist/index.html','utf8');
   const elements=new Map([...html.matchAll(/id="([^"]+)"/g)].map(m=>['#'+m[1],{

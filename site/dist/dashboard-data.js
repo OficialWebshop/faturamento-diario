@@ -45,12 +45,15 @@
       const group = groups.find(([name]) => name === (scope === 'Full' ? 'Full Oficial' : scope));
       const channels = {};
       for (const row of source.filter(group[1])) channels[row.canal] = (channels[row.canal] || 0) + Number(row.gmv || 0);
-      if (scope === 'Oficial' && payload.snapshotHistory?.some(snapshot => snapshot.business?.length)) {
+      if (payload.snapshotHistory?.some(snapshot => snapshot.business?.length)) {
         const history = payload.snapshotHistory.filter(snapshot => Array.isArray(snapshot.business));
         const accumulated = history.map(snapshot => {
           const channels = {};
-          for (const row of snapshot.business.filter(group[1])) {
-            channels[row.canal] = (channels[row.canal] || 0) + Number(row.gmv || 0);
+          for (const row of snapshot.business) {
+            const value = scope === 'Full'
+              ? row.empresa === 'Prioriza' ? 0 : Number(row.fullGmv ?? (group[1](row) ? row.gmv : 0))
+              : group[1](row) ? Number(row.gmv || 0) : 0;
+            if (value) channels[row.canal] = (channels[row.canal] || 0) + value;
           }
           return {slot:snapshot.slot, channels};
         });

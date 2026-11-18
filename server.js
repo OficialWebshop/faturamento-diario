@@ -381,7 +381,12 @@ function buildPayload(all) {
     const item = {
       at: snapshot.at,
       slot: snapshot.slot || slotKey(snapshot.at),
-      business: snapshot.business || [],
+      business: (snapshot.business || []).map(row => ({
+        ...row,
+        ...(Array.isArray(snapshot.analytics) ? {
+          fullGmv: snapshot.analytics.filter(item => item.empresa === row.empresa && item.canal === row.canal && item.contabilizado && item.fulfillment).reduce((sum, item) => sum + num(item.valor), 0)
+        } : {})
+      })),
       gmv,
       orders: orderCount,
       isBaseline: index === 0,
@@ -720,6 +725,7 @@ async function updateData({ mode: requestedMode = 'auto' } = {}) {
           empresa: account.empresa,
           canal,
           gmv,
+          fullGmv: analytics.filter(row => row.empresa === account.empresa && row.canal === canal && row.contabilizado && row.fulfillment).reduce((sum, row) => sum + num(row.valor), 0),
           pedidos: items.filter(x => countableSale(x.order) && channel(x.order, account.empresa) === canal).length
         });
       }
