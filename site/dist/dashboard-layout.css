@@ -48,6 +48,14 @@ footer{display:flex;flex-shrink:0;margin:0;min-height:16px;font-size:8px;gap:8px
 .pagination button,.mobile-panels button{border:1px solid #444;border-radius:6px;background:#191b1d;color:#fff;cursor:pointer;padding:5px 12px;min-height:28px}
 .pagination button:disabled{opacity:.3;cursor:default}
 .mobile-panels{display:none}
+/* Reserve enough vertical space for the value and percentage at every zoom. */
+.ranking .rank-row,.ranking.dense .rank-row{flex:0 0 44px;min-height:44px;padding-top:4px;padding-bottom:4px;align-items:center}
+.ranking .gmv{display:flex;flex-direction:column;justify-content:center;gap:2px;min-width:0;white-space:nowrap}
+.ranking .gmv strong{display:block;font-size:16px;line-height:18px;margin:0}
+.ranking .gmv small{display:block;font-size:9px;line-height:12px;white-space:nowrap;margin:0}
+#hourlyChart [data-hour-index]{cursor:pointer}
+#hourlyChart [data-hour-index]:focus-visible{outline:2px solid #fff;outline-offset:-2px}
+#hourlyChart [data-hour-index][aria-pressed=true] .bar{outline:2px solid #ffd1ad;outline-offset:-2px;filter:brightness(1.15)}
 .analytics-view.active{display:flex;flex-direction:column;height:auto;min-height:0;padding:12px}
 .analytics-head{flex-shrink:0;gap:12px;padding-bottom:10px}.analytics-head h2{font-size:24px}
 .analytics-kpis span{min-width:95px;padding:7px 10px}.analytics-controls{flex-shrink:0;padding:9px 0}

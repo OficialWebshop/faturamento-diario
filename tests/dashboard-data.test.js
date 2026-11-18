@@ -88,7 +88,7 @@ test('Full and Prioriza hourly charts use their own snapshot values',()=>{
 test('actual frontend consumes legacy response and displays executive KPIs and morning history',async()=>{
   const html=fs.readFileSync('site/dist/index.html','utf8');
   const elements=new Map([...html.matchAll(/id="([^"]+)"/g)].map(m=>['#'+m[1],{
-    textContent:'',innerHTML:'',value:'all',style:{},classList:{add(){},remove(){},toggle(){}},addEventListener(){}
+    textContent:'',innerHTML:'',value:'all',style:{},classList:{add(){},remove(){},toggle(){}},setAttribute(){},listeners:{},addEventListener(type,callback){this.listeners[type]=callback}
   }]));
   const health={classList:{toggle(){}},querySelector:()=>({textContent:''})};
   const context=vm.createContext({Intl,Date,console,document:{body:{classList:{toggle(){}}},
@@ -128,4 +128,23 @@ test('actual frontend consumes legacy response and displays executive KPIs and m
   const page=vm.runInContext("pageRows(Array.from({length:419},(_,i)=>i),'analytic')",context);
   assert.equal(page.rows.length,1);
   assert.equal(elements.get('#analyticNext').disabled,false);
+  for(const availableHeight of [176,220,352]){
+    elements.get('#ranking').clientHeight=availableHeight;
+    const result=vm.runInContext("pageRows(Array.from({length:30},(_,i)=>i),'rank')",context);
+    assert(result.rows.length*44<=availableHeight);
+    assert.equal(result.rows.length,Math.floor(availableHeight/44));
+  }
+  const chart=elements.get('#hourlyChart');
+  chart.listeners.click({target:{closest:()=>({dataset:{hourIndex:'8'}})}});
+  assert.match(elements.get('#chartLegend').textContent,/08h.*Consolidado.*100,00/);
+  vm.runInContext("activeChannel='Amazon'; renderChart()",context);
+  assert.match(elements.get('#chartLegend').textContent,/08h.*Amazon.*0,00/);
+  let prevented=false;
+  chart.listeners.keydown({key:'Enter',preventDefault(){prevented=true},target:{closest:()=>({dataset:{hourIndex:'18'}})}});
+  assert(prevented);
+  // An unavailable future hour cannot overwrite the selected hour.
+  assert.match(elements.get('#chartLegend').textContent,/08h/);
+  vm.runInContext("activeChannel='all';renderChart()",context);
+  assert.match(elements.get('#hourlyChart').innerHTML,/data-hour-index="8" role="button" tabindex="0"/);
+
 });
