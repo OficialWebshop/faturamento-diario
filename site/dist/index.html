@@ -41,7 +41,9 @@
 
     <nav class="view-tabs" aria-label="Navegação do relatório"><button class="view-tab active" data-view="dashboardView">PAINEL EXECUTIVO</button><button class="view-tab" data-view="analyticsView">TABELA ANALÍTICA</button></nav>
 
-    <div id="dashboardView" class="report-view active">
+<section class="scope-carousel" aria-label="Visão por operação"><div><small>VISÃO EM EXIBIÇÃO</small><strong id="scopeTitle">CONSOLIDADO</strong></div><div class="scope-buttons"><button class="scope-button active" data-scope="Consolidado" aria-pressed="true">Consolidado</button><button class="scope-button" data-scope="Oficial" aria-pressed="false">Oficial</button><button class="scope-button" data-scope="Full" aria-pressed="false">Full</button><button class="scope-button" data-scope="Prioriza" aria-pressed="false">Prioriza</button></div></section>
+    <div id="dashboardView" class="report-view active" data-mobile-panel="summary">
+    <nav class="mobile-panels" aria-label="Seção do painel"><button data-panel="summary" aria-pressed="true">Resumo</button><button data-panel="ranking" aria-pressed="false">Ranking</button><button data-panel="hourly" aria-pressed="false">Ritmo de vendas</button></nav>
     <section class="hero-grid">
       <article class="metric featured"><div class="metric-top"><span>GMV TOTAL</span><b>ACUMULADO</b></div><strong id="totalGMV">R$ 0</strong><div class="delta" id="totalDelta">▲ 0% vs. hora anterior</div><div class="spark" id="sparkline"></div></article>
       <article class="metric"><div class="metric-top"><span>GMV ÚLTIMA HORA</span><b id="currentHour">—</b></div><strong id="hourGMV">R$ 0</strong><div class="delta" id="hourDelta">Hora em andamento</div><div class="progress"><i id="hourProgress"></i></div></article>
@@ -66,7 +68,7 @@
     <section class="content-grid">
       <article class="panel ranking-panel">
         <div class="panel-head"><div><span class="kicker">DISPUTA EM TEMPO REAL</span><h2>RANKING DE CANAIS</h2></div><div class="rank-meta"><span id="rankingPage">TOP CANAIS</span><div class="legend"><i></i> GMV acumulado</div></div></div>
-        <div id="ranking" class="ranking"></div>
+        <div id="ranking" class="ranking"></div><nav class="pagination" aria-label="Páginas rank"><button id="rankPrev" aria-label="Página anterior">‹</button><span id="rankPageLabel" aria-live="polite"></span><button id="rankNext" aria-label="Próxima página">›</button></nav>
       </article>
       <article class="panel hourly-panel">
         <div class="panel-head"><div><span class="kicker">RITMO DE VENDAS</span><h2 id="chartTitle">GMV INCREMENTAL POR HORA</h2></div><select id="channelFilter" aria-label="Filtrar canal"><option value="all">Todos os canais</option></select></div>
@@ -80,7 +82,7 @@
     <section id="analyticsView" class="report-view analytics-view">
       <div class="analytics-head"><div><span class="kicker">RAIO X OPERACIONAL</span><h2>TABELA ANALÍTICA DE PEDIDOS</h2><p>Conferência da origem, empresa, situação e valor de cada pedido capturado hoje.</p></div><div class="analytics-kpis"><span><small>PEDIDOS</small><b id="analyticOrders">0</b></span><span><small>GMV</small><b id="analyticGmv">R$ 0</b></span><span><small>DETALHES COMPLETOS</small><b id="analyticComplete">0%</b></span></div></div>
       <div class="analytics-controls"><input id="analyticSearch" type="search" placeholder="Buscar pedido, canal, marcador ou e-commerce"><select id="analyticCompany"><option value="all">Todas as empresas</option></select><select id="analyticChannel"><option value="all">Todos os canais</option></select></div>
-      <div class="analytics-table-wrap"><table class="analytics-table"><thead><tr><th>Pedido</th><th>Conta</th><th>Canal padrão</th><th>Modalidade</th><th>E-commerce Tiny</th><th>Situação</th><th>Detalhe</th><th>Valor</th></tr></thead><tbody id="analyticsRows"></tbody></table></div>
+      <div class="analytics-table-wrap"><table class="analytics-table"><thead><tr><th>Pedido</th><th>Conta</th><th>Canal padrão</th><th>Modalidade</th><th>E-commerce Tiny</th><th>Situação</th><th>Detalhe</th><th>Valor</th></tr></thead><tbody id="analyticsRows"></tbody></table></div><nav class="pagination" aria-label="Páginas analytic"><button id="analyticPrev" aria-label="Página anterior">‹</button><span id="analyticPageLabel" aria-live="polite"></span><button id="analyticNext" aria-label="Próxima página">›</button></nav>
     </section>
     <footer><span>BLACK FRIDAY OFICIAL 2026</span><p>Fonte oficial • Tiny API Oficial + Prioriza • EVENTOS EM TEMPO REAL • CONSOLIDAÇÃO HORÁRIA</p><div>REMADA BLACK <b>● AO VIVO</b></div></footer>
   </main>

@@ -1,81 +1,92 @@
-/* Keep the ranking and hourly chart as the main dashboard content. */
-.hero-grid{grid-template-columns:repeat(4,minmax(0,1fr))}
-.metric.featured>strong{font-size:30px}
-.executive-kpis{grid-template-columns:repeat(3,minmax(0,1fr))!important}
-.content-grid{grid-template-columns:1fr 1fr;gap:12px}
-.content-grid>.panel{min-width:0;min-height:460px}
-.ranking-panel{display:flex;flex-direction:column}
-.ranking{flex:1;min-height:0;overflow:auto}
-.hourly-panel .chart-wrap{min-height:320px}
-.shell,.report-view,.hero-grid>*{min-width:0}
-@media(min-width:1200px){
-  body{overflow:auto}
-  .shell{height:auto;min-height:100vh}
-  #dashboardView.active{display:flex;flex-direction:column;flex:1;min-height:0}
-  .metric.featured{min-height:96px}
-  .content-grid{flex:1}
-  .content-grid>.panel{min-height:460px;height:auto}
-  .ranking{height:auto}
-}
-@media(min-width:761px) and (max-width:1199px){
-  .topbar{flex-wrap:wrap;gap:16px}
-  .actions{flex:1;justify-content:flex-start}
-  .hero-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
-  .executive-kpis{grid-template-columns:1fr!important}
-  .content-grid{grid-template-columns:1fr}
+/* A viewport-sized workspace: every long list has explicit page controls. */
+*{box-sizing:border-box}
+html,body{margin:0;padding:0;width:100vw;height:100vh;height:100dvh;overflow:hidden;display:flex;flex-direction:column}
+.shell{width:100%;max-width:none;height:100%;min-height:0;min-width:0;margin:0;padding:clamp(4px,1vh,12px) clamp(6px,1vw,16px);display:flex;flex-direction:column;gap:6px;overflow:hidden}
+.shell>header,.shell>nav,.scope-carousel{flex-shrink:0}
+.topbar{min-height:0;margin:0;padding:6px 10px;gap:12px}
+.brand{min-width:0;gap:12px}.brand img{width:clamp(40px,7vh,72px);height:clamp(40px,7vh,72px)}
+.brand h1{font-size:clamp(22px,2.3vw,34px)}.brand p{font-size:clamp(10px,1vw,15px)}
+.official-mark{margin-left:auto}.official-mark img{width:100px;height:50px}
+.actions{min-width:0;gap:8px}.actions .status{margin-left:0;padding-left:10px}
+.view-tabs{height:30px;margin:0;align-items:center}.view-tab{padding:8px 14px}
+.scope-carousel{height:36px;min-height:36px;margin:0;padding:4px 10px;grid-template-columns:170px 1fr}.scope-carousel>div:first-child{margin:0}
+.scope-buttons{gap:6px}.scope-button{min-height:27px}.scope-carousel strong{font-size:16px}
+.report-view{min-height:0;min-width:0;overflow:hidden;flex:1}
+#dashboardView.active{display:flex;flex-direction:column;gap:6px}
+.hero-grid{grid-template-columns:repeat(4,minmax(0,1fr));gap:7px;margin:0;flex-shrink:0}
+.metric,.metric.featured,.metric.target{min-height:0;padding:clamp(7px,1vh,12px);grid-column:auto}
+.metric>strong,.metric.featured>strong{font-size:clamp(22px,3.3vh,30px);margin:8px 0 5px}
+.metric-top{font-size:9px;gap:6px}.metric-top b{font-size:8px}.metric small{font-size:8px}
+.leader{margin-top:7px;gap:8px}.leader strong{font-size:22px}.progress,.target-bar{margin-top:8px}.target small{margin-top:7px}
+.spark{width:90px;height:28px;bottom:7px}
+.executive-kpis{display:grid!important;grid-template-columns:repeat(3,minmax(0,1fr))!important;gap:7px!important;margin:0;padding:0;overflow:hidden;flex-shrink:0}
+.monitor-card.kpi-cluster{min-height:0!important;padding:7px 9px!important;gap:8px!important;grid-template-columns:26px minmax(0,1fr) auto}
+.cluster-main strong{font-size:20px!important}.cluster-side{min-width:70px;padding-left:8px}.monitor-icon{width:26px;height:26px}.monitor-card small{font-size:7px}
+.management-grid{display:grid;grid-template-columns:1.1fr 1.3fr 1fr;gap:7px;margin:0;padding:0;overflow:hidden;flex-shrink:0}
+.management-card{min-height:0;padding:8px 10px;gap:8px;grid-template-columns:1.1fr 1fr .6fr .7fr}
+.management-card strong{font-size:21px}.management-card h3{font-size:17px}.management-card b{font-size:18px}.management-card small{font-size:6px}
+.operation-split{gap:4px}.operation-split span{padding:3px}.operation-split b{font-size:14px}
+.content-grid{flex:1;min-height:0;display:grid;grid-template-columns:1fr 1fr;gap:8px;overflow:hidden}
+.content-grid>.panel{min-width:0;min-height:0;height:100%;padding:10px 12px;overflow:hidden;display:flex;flex-direction:column}
+.panel-head{flex-shrink:0;min-width:0;margin:0 0 5px;padding-bottom:7px}.panel-head h2{font-size:clamp(18px,2.6vh,24px)}.kicker{font-size:9px}
+.ranking{height:auto;max-height:none;flex:1;min-height:0;overflow:hidden;justify-content:space-evenly}
+.rank-row,.ranking.dense .rank-row{min-height:0;flex:1;padding:2px 0;gap:7px;grid-template-columns:25px 30px minmax(70px,1fr) minmax(40px,2fr) 90px}
+.channel-name{min-width:0}.channel-name strong{font-size:11px}.channel-icon{width:27px;height:27px;flex-basis:27px}.gmv strong{font-size:17px}
+.hourly-panel .chart-wrap{flex:1;min-height:0;height:auto;grid-template-columns:38px minmax(0,1fr);padding:8px 0 24px;overflow:hidden}
+.bars{min-width:0;gap:3px}.bar-group{min-width:0}.bar-group label{font-size:8px}
+.chart-summary{flex-shrink:0;padding:7px 3px;gap:8px;min-height:0;font-size:9px}.chart-summary strong{white-space:normal;margin-left:0}.chart-summary span{max-width:65%}
+.sales-ticker,.insight-strip,footer{display:none}
+.pagination{display:flex;align-items:center;justify-content:center;gap:12px;flex-shrink:0;padding-top:5px;font-size:10px;color:#aaa}
+.pagination button,.mobile-panels button{border:1px solid #444;border-radius:6px;background:#191b1d;color:#fff;cursor:pointer;padding:5px 12px;min-height:28px}
+.pagination button:disabled{opacity:.3;cursor:default}
+.mobile-panels{display:none}
+.analytics-view.active{display:flex;flex-direction:column;height:auto;min-height:0;padding:12px}
+.analytics-head{flex-shrink:0;gap:12px;padding-bottom:10px}.analytics-head h2{font-size:24px}
+.analytics-kpis span{min-width:95px;padding:7px 10px}.analytics-controls{flex-shrink:0;padding:9px 0}
+.analytics-table-wrap{height:auto;max-height:none;min-height:0;flex:1;overflow:hidden}
+.analytics-table{min-width:0;table-layout:fixed;width:100%}.analytics-table th,.analytics-table td{padding:8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.analytics-table th{font-size:8px}
+.analytics-table td{height:38px;font-size:10px}.analytics-table thead{position:static}
+.smart-alert,.data-quality-alert{flex-shrink:0;margin:0}
+@media(max-width:1100px){
+  .official-mark{display:none}.actions .upload{display:none}.brand h1{font-size:23px}.brand p{font-size:11px}
+  .actions .status{display:none}.actions{margin:0}.topbar{flex-wrap:nowrap}
+  .management-card{grid-template-columns:1fr 1fr;gap:4px}.management-card .stream-health{display:none}.management-card .operation-split{grid-column:auto}
+  .metric-top{flex-wrap:wrap}.rank-bar{display:none}.rank-row,.ranking.dense .rank-row{grid-template-columns:22px 28px minmax(0,1fr) 80px}
 }
 @media(max-width:760px){
-  .topbar{grid-template-columns:minmax(0,1fr);gap:12px}
-  .brand{width:100%}
-  .brand h1{font-size:clamp(19px,5.5vw,28px);white-space:normal}
-  .brand img{flex:0 0 48px}
-  .actions{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px;margin:0;min-width:0}
-  .actions .date-filter,.actions #refreshBtn{grid-column:auto;grid-row:auto;width:100%;min-width:0;height:46px}
-  .actions #refreshBtn{justify-content:center;font-size:11px;padding:0 8px}
-  .actions .status{grid-column:1/-1;grid-row:auto;justify-content:flex-start}
-  .status small{display:block;font-size:8px}
-  .status strong{font-size:11px}
-  .view-tabs{height:auto;align-items:stretch}
-  .view-tab{min-height:44px;letter-spacing:.06em}
-  .scope-buttons{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:5px;overflow:visible}
-  .scope-button{height:40px;padding:0 4px;font-size:10px}
-  .hero-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
-  .metric.featured,.metric.target{grid-column:1/-1;min-height:96px}
-  .metric.featured>strong{font-size:30px;margin:9px 0 6px}
-  .metric-top{gap:6px;flex-wrap:wrap}
-  .leader{gap:7px;flex-wrap:wrap}
-  .leader strong{font-size:20px;overflow-wrap:anywhere}
-  .executive-kpis{display:grid!important;grid-template-columns:1fr!important;margin:0 0 8px;padding:0;overflow:visible}
-  .monitor-card.kpi-cluster{min-width:0;gap:8px!important}
-  .cluster-side{min-width:74px;padding-left:8px}
-  .management-grid{display:grid;grid-template-columns:minmax(0,1fr);margin:0 0 8px;padding:0;overflow:visible}
-  .management-card{min-width:0;gap:10px;grid-template-columns:repeat(2,minmax(0,1fr));padding:15px 12px}
-  .management-card>div:last-child:not(.stream-health){display:block}
-  .management-card .operation-split{display:grid;grid-column:auto}
-  .management-card .hidden-ticket{display:none!important}
-  .content-grid{display:flex;flex-direction:column;gap:12px}
-  .content-grid>.panel{min-height:400px;padding:12px}
-  .hourly-panel{order:0}
-  .ranking-panel{order:1}
-  .hourly-panel .panel-head{grid-template-columns:minmax(0,1fr);gap:12px}
-  .hourly-panel select{width:100%;max-width:none;min-height:44px;font-size:12px}
-  .hourly-panel .chart-wrap{height:300px;min-height:300px;flex:none;grid-template-columns:35px minmax(540px,1fr);overflow-x:auto}
-  .bars{min-width:540px}
-  .chart-summary{flex-wrap:wrap;gap:8px}
-  .chart-summary span{max-width:100%;font-size:10px}
-  .chart-summary strong{margin-left:0;text-align:left}
-  .ranking{max-height:none;overflow:visible}
-  .rank-row{grid-template-columns:22px 30px minmax(0,1fr) 82px;gap:6px;min-height:58px}
-  .channel-name{min-width:0;overflow-wrap:anywhere}
-  .channel-name strong{font-size:11px}
-  .rank-meta{flex-shrink:0}
-  .legend{font-size:8px}
-  .analytics-view{height:auto;min-height:0;padding:12px}
-  .analytics-kpis{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;margin-top:12px}
-  .analytics-kpis span{min-width:0;padding:8px}
-  .analytics-kpis b{font-size:18px;overflow-wrap:anywhere}
-  .analytics-controls input,.analytics-controls select{width:100%;min-width:0;min-height:44px;font-size:16px}
-  .date-filter input{min-width:0;width:100%;font-size:16px}
-  .analytics-table-wrap{height:auto;max-height:68vh}
-  #toast{left:12px;right:12px;bottom:12px}
+  .shell{padding:6px;gap:5px}.topbar{display:flex;align-items:center;gap:7px;padding:6px;flex-wrap:wrap}
+  .brand{flex:1;gap:6px}.brand img{width:38px;height:38px;flex-basis:38px}.brand h1{font-size:20px;white-space:normal}.brand .eyebrow{font-size:6px}.brand p{font-size:9px}
+  .actions{display:flex;width:100%;gap:7px}.actions .date-filter{flex:1;width:auto;min-width:0;height:36px}.date-filter input{font-size:16px;width:100%;min-width:0}
+  .actions #refreshBtn{height:36px;width:auto;font-size:10px;flex:1;padding:0 8px;justify-content:center}.actions .status,.actions .upload{display:none}
+  .view-tabs{height:30px}.view-tab{min-height:30px;flex:1;font-size:9px;padding:8px 5px;text-align:center}
+  .scope-carousel{display:block;height:38px;min-height:38px;padding:2px 0;background:transparent;border:0}.scope-carousel>div:first-child{display:none}
+  .scope-buttons{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));overflow:hidden;padding:0;gap:5px}.scope-button{font-size:10px;height:34px;padding:0 4px}
+  .mobile-panels{display:flex;gap:5px;flex-shrink:0}.mobile-panels button{flex:1;font-size:11px;min-height:34px;padding:5px}.mobile-panels button[aria-pressed=true]{background:#ff5a00;border-color:#ff5a00}
+  #dashboardView[data-mobile-panel=summary] .content-grid{display:none}
+  #dashboardView:not([data-mobile-panel=summary])>.hero-grid,#dashboardView:not([data-mobile-panel=summary])>.executive-kpis,#dashboardView:not([data-mobile-panel=summary])>.management-grid{display:none!important}
+  #dashboardView[data-mobile-panel=ranking] .hourly-panel,#dashboardView[data-mobile-panel=hourly] .ranking-panel{display:none}
+  .hero-grid{flex:1;min-height:0;grid-template-columns:repeat(2,minmax(0,1fr));gap:5px}
+  .metric,.metric.featured,.metric.target{grid-column:auto;min-height:0;padding:8px}.metric>strong,.metric.featured>strong{font-size:26px;margin:7px 0 4px}.metric-top{font-size:8px}.delta{font-size:8px}.spark{display:none}
+  .leader{gap:5px}.leader strong{font-size:20px}.leader small{font-size:8px}.channel-icon.lg{width:30px;height:30px;flex-basis:30px}.target small{font-size:7px}
+  .executive-kpis{flex:1;min-height:0;grid-template-columns:1fr!important;gap:5px!important}.monitor-card.kpi-cluster{grid-template-columns:25px minmax(0,1fr) auto;padding:5px 8px!important}.cluster-main strong{font-size:20px!important}.cluster-side{min-width:78px}.monitor-card span{font-size:8px}
+  .management-grid{flex:1;min-height:0;grid-template-columns:1fr;gap:5px}.management-card{padding:5px 8px;grid-template-columns:1.1fr 1fr .5fr .7fr;min-height:0}.management-card>div:last-child:not(.stream-health){display:block}.management-card strong{font-size:19px}.management-card h3{font-size:15px}.scope-note{display:none!important}.operation-split{display:grid;grid-column:auto}.management-card .hidden-ticket{display:none!important}
+  .content-grid{display:flex;flex:1;min-height:0;flex-direction:column}.content-grid>.panel{flex:1;min-height:0;padding:9px}.hourly-panel,.ranking-panel{order:0}
+  .hourly-panel .panel-head{display:flex;align-items:center;gap:6px}.hourly-panel select{width:110px;max-width:110px;min-height:32px;font-size:10px;padding:5px}
+  .panel-head h2{font-size:21px}.kicker{font-size:8px}.rank-meta{font-size:8px}.legend{font-size:8px}
+  .hourly-panel .chart-wrap{flex:1;min-height:0;height:auto;grid-template-columns:32px minmax(0,1fr);overflow:hidden}.bars{min-width:0;gap:2px}.bar-group{min-width:0}.bar-group label{font-size:7px}
+  .chart-summary{flex-wrap:wrap;font-size:9px}.chart-summary span{max-width:100%}.chart-summary strong{text-align:left}
+  .ranking{overflow:hidden;max-height:none}.rank-row,.ranking.dense .rank-row{grid-template-columns:22px 28px minmax(0,1fr) 82px;gap:6px}
+  .pagination button{min-height:34px}
+  .analytics-view.active{padding:8px}.analytics-head{display:block;padding-bottom:5px}.analytics-head h2{font-size:20px}.analytics-head p{display:none}
+  .analytics-kpis{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:5px;margin-top:6px}.analytics-kpis span{min-width:0;padding:5px}.analytics-kpis b{font-size:18px;margin-top:2px}.analytics-kpis small{font-size:6px}
+  .analytics-controls{display:grid;grid-template-columns:1fr 1fr;gap:5px;padding:6px 0}.analytics-controls input{grid-column:1/-1}.analytics-controls input,.analytics-controls select{width:100%;min-width:0;height:32px;font-size:16px;padding:3px 6px}
+  .analytics-table-wrap{max-height:none;overflow:hidden}.analytics-table{display:block;min-width:0}.analytics-table thead{display:none}.analytics-table tbody{display:grid;gap:6px}
+  .analytics-table tr{display:grid;grid-template-columns:1fr 1fr;gap:0;border-bottom:1px solid #444;padding:4px}
+  .analytics-table td{display:block;height:auto;min-height:43px;padding:4px;border:0;white-space:normal;font-size:10px;overflow-wrap:anywhere;text-align:left!important}
+  .analytics-table td:before{display:block;color:#888;font-size:8px;margin-bottom:3px}
+  .analytics-table td:nth-child(1):before{content:'PEDIDO'}.analytics-table td:nth-child(2):before{content:'CONTA'}.analytics-table td:nth-child(3):before{content:'CANAL'}.analytics-table td:nth-child(4):before{content:'MODALIDADE'}.analytics-table td:nth-child(5):before{content:'E-COMMERCE'}.analytics-table td:nth-child(6):before{content:'SITUAÇÃO'}.analytics-table td:nth-child(7):before{content:'DETALHE'}.analytics-table td:nth-child(8):before{content:'VALOR'}
+}
+@media(max-height:560px) and (min-width:761px){
+  .brand img{width:30px;height:30px}.brand p,.eyebrow,.official-mark,.cluster-main>span,.cluster-side>span,.scope-note,.spark{display:none!important}
+  .topbar{padding:3px 8px}.actions button,.actions .date-filter{height:32px}.metric{padding:5px}.metric>strong,.metric.featured>strong{font-size:22px;margin:3px 0}.management-card{padding:4px 8px;grid-template-columns:repeat(4,minmax(0,1fr))}.metric.target small{display:none}.monitor-card.kpi-cluster{padding:4px 8px!important}
 }
