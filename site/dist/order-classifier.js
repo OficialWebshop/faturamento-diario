@@ -249,11 +249,12 @@
   }
 
   function channel(order, empresa) {
+    const seller = normalizeText(sellerName(order) || (typeof order?.vendedor === 'string' ? order.vendedor : ''));
+    if (seller === 'MARTINS') return 'Martins';
     const ff = classifyFulfillment(order, empresa);
     if (ff.forcedChannel) return ff.forcedChannel;
 
     const markers = extractMarkers(order).join(' ');
-    const seller = normalizeText(sellerName(order));
     if (/^(GABRIEL BARBOSA|CAMILA WALESKO|ANDREIA OTTO|ISABEL LARA)$/.test(seller)) {
       return 'Vendas Diretas';
     }
