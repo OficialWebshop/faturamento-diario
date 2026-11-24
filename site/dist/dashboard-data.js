@@ -5,6 +5,48 @@
 })(typeof globalThis !== 'undefined' ? globalThis : this, function() {
   const sum = values => Object.values(values || {}).reduce((a, b) => a + Number(b || 0), 0);
   const labels = Array.from({length:24}, (_, h) => String(h).padStart(2, '0') + 'h');
+  function scopeTotals(snapshot = {}) {
+    const analytics=Array.isArray(snapshot.analytics)?snapshot.analytics.filter(row=>row.contabilizado):null;
+    const rows=snapshot.business?.length?snapshot.business:(analytics || []).map(row=>({...row,gmv:row.valor}));
+    const fullValue=row=>Number(row.fullGmv ?? ((['OFICIALSP','OFICIALSP2'].includes(row.empresa) || row.fulfillment)?row.gmv:0));
+    return {
+      Consolidado:snapshot.channels?sum(snapshot.channels):Number(snapshot.gmv || 0),
+      Oficial:rows.filter(row=>row.empresa!=='Prioriza').reduce((s,row)=>s+Number(row.gmv || 0),0),
+      Prioriza:rows.filter(row=>row.empresa==='Prioriza').reduce((s,row)=>s+Number(row.gmv || 0),0),
+      Full:analytics?analytics.filter(row=>row.empresa!=='Prioriza' && row.fulfillment).reduce((s,row)=>s+Number(row.valor || 0),0):rows.filter(row=>row.empresa!=='Prioriza').reduce((s,row)=>s+fullValue(row),0)
+    };
+  }
+  function dayComparison(all, dataDate) {
+    const previousDayDate=new Date(new Date(dataDate+'T12:00:00Z').getTime()-86400000).toISOString().slice(0,10);
+    const previous=all.filter(snapshot=>snapshot.dataDate===previousDayDate).sort((a,b)=>new Date(a.at)-new Date(b.at)).at(-1);
+    const totals=previous?scopeTotals(previous):null;
+    return {previousDayDate,byScope:Object.fromEntries(['Consolidado','Oficial','Full','Prioriza'].map(scope=>[scope,{previousDayGmv:totals?totals[scope]:null}]))};
+  }
+  function retainDayClosings(saved, currentDay, current) {
+    const historical=new Map();
+    for(const snapshot of saved)if(snapshot.dataDate!==currentDay && snapshot.dataDate && (!historical.has(snapshot.dataDate) || new Date(snapshot.at)>new Date(historical.get(snapshot.dataDate).at)))historical.set(snapshot.dataDate,snapshot);
+    return [...historical.values(),...current].sort((a,b)=>new Date(a.at)-new Date(b.at));
+  }
+  function goalState(snapshots, target, dataDate) {
+    const state = {date:dataDate,target:Number(target || 0),reachedAt:{}};
+    if (!(state.target > 0)) return state;
+    const day = new Intl.DateTimeFormat('en-CA',{timeZone:'America/Sao_Paulo',year:'numeric',month:'2-digit',day:'2-digit'});
+    const valid = at => Number.isFinite(new Date(at).getTime()) && day.format(new Date(at)) === dataDate;
+    const record = (scope,at) => {
+      if(valid(at) && (!state.reachedAt[scope] || new Date(at)<new Date(state.reachedAt[scope]))) state.reachedAt[scope]=at;
+    };
+    for(const snapshot of snapshots) {
+      if(snapshot.dataDate && snapshot.dataDate!==dataDate) continue;
+      const previous=snapshot.goalReached;
+      if(previous?.date===dataDate && previous.target===state.target) {
+        for(const [scope,at] of Object.entries(previous.reachedAt || {})) record(scope,at);
+      }
+      if(!valid(snapshot.at)) continue;
+      const totals=scopeTotals(snapshot);
+      for(const [scope,value] of Object.entries(totals))if(value>=state.target)record(scope,snapshot.at);
+    }
+    return state;
+  }
   function hourly(series) {
     return (series || []).map(row => {
       const values = Array(24).fill(0);
@@ -74,5 +116,5 @@
     const latest = payload.snapshotHistory?.at(-1), activeHour = latest ? Number(String(latest.slot).slice(0,2)) : 0;
     return {...payload, series, management, views, metrics:{...payload.metrics, activeHour}, legacyHourly:true};
   }
-  return {normalize, hourly};
+  return {normalize, hourly, goalState, scopeTotals, dayComparison, retainDayClosings};
 });

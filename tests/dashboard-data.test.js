@@ -2,7 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const vm = require('node:vm');
-const {normalize} = require('../site/dist/dashboard-data');
+const {normalize,goalState,dayComparison} = require('../site/dist/dashboard-data');
 
 const payload = {
   dataDate:'2026-11-17', target:262832, updatedAt:'2026-11-17T21:00:00Z',
@@ -54,9 +54,10 @@ test('Oficial hourly chart uses company snapshots and excludes Prioriza',()=>{
   // Verify the actual server response carries the saved company history.
   const server=fs.readFileSync('server.js','utf8');
   const build=server.slice(server.indexOf('function buildPayload(all)'),server.indexOf('function hasFullDetail'));
-  const context=vm.createContext({brDate:()=>payload.dataDate,num:Number,getDailyTargetValue:()=>0,SOURCE_LABEL:'test',slotKey:()=>'',snapshots:history.map((row,i)=>({...row,dataDate:payload.dataDate,at:`2026-11-17T${String(11+i).padStart(2,'0')}:00:00Z`,channels:{Meli:100},orders:{Meli:1}}))});
+  const context=vm.createContext({goalState,dayComparison,brDate:()=>payload.dataDate,num:Number,getDailyTargetValue:()=>100,SOURCE_LABEL:'test',slotKey:()=>'',snapshots:history.map((row,i)=>({...row,dataDate:payload.dataDate,at:`2026-11-17T${String(11+i).padStart(2,'0')}:00:00Z`,channels:{Meli:100},orders:{Meli:1}}))});
   vm.runInContext(build,context);
   assert.equal(vm.runInContext('buildPayload(snapshots).snapshotHistory[0].business[0].gmv',context),80);
+  assert.equal(vm.runInContext('buildPayload(snapshots).goalReachedAt.Consolidado',context),'2026-11-17T11:00:00Z');
 });
 test('Full and Prioriza hourly charts use their own snapshot values',()=>{
   const snapshotHistory = [
@@ -167,6 +168,41 @@ test('actual frontend consumes legacy response and displays executive KPIs and m
   assert.match(elements.get('#hourDetailsTitle').textContent,/08h.*Full/);
   assert.match(elements.get('#hourDetailsValues').textContent,/Total realizado:.*50,00/);
   assert.doesNotMatch(elements.get('#hourDetailsValues').textContent,/100,00/);
+  vm.runInContext("dailyTarget=1000; dailyGoalReached={Full:'2026-11-24T20:30:00Z'}; liveMetrics.totalGmv=2015; render();",context);
+  assert.equal(elements.get('#targetValue').textContent,'201.5%');
+  assert.equal(elements.get('#targetValue').style.color,'var(--green)');
+  assert.equal(elements.get('#targetGap').style.color,'var(--green)');
+  assert.match(elements.get('#targetGap').textContent,/Meta batida às 17:30.*Valor acima da meta: R\$\s*1.015/);
+  vm.runInContext('liveMetrics.totalGmv=1000; render()',context);
+  assert.equal(elements.get('#targetValue').textContent,'100.0%');
+  assert.match(elements.get('#targetGap').textContent,/às 17:30.*R\$\s*0$/);
+  vm.runInContext('liveMetrics.totalGmv=999; render()',context);
+  assert.equal(elements.get('#targetValue').style.color,'');
+  assert.equal(elements.get('#targetGap').style.color,'');
+  assert.match(elements.get('#targetGap').textContent,/Faltam R\$\s*1 para a meta/);
+  vm.runInContext('dailyGoalReached={}; liveMetrics.totalGmv=2015; render()',context);
+  assert.match(elements.get('#targetGap').textContent,/Meta batida/);
+  vm.runInContext("dailyGoalReached={Full:'2026-11-24T21:42:00Z'};liveMetrics.totalGmv=2377;render()",context);
+  assert.match(elements.get('#targetGap').textContent,/Meta batida às 18:42.*R\$\s*1.377/);
+  vm.runInContext('dailyGoalReached={};render()',context);
 
-
+  assert.doesNotMatch(elements.get('#targetGap').textContent,/às/);
+  vm.runInContext('dailyTarget=0; render()',context);
+  assert.equal(elements.get('#targetValue').style.color,'');
+  assert.equal(elements.get('#targetGap').textContent,'Meta não cadastrada para a data');
+  vm.runInContext('dailyTarget=1000; data=[]; render()',context);
+  assert.equal(elements.get('#targetValue').style.color,'');
+  assert.equal(elements.get('#targetGap').style.color,'');
+  vm.runInContext("comparisons={byScope:{Full:{previousDayGmv:1000},Consolidado:{previousDayGmv:5}}};renderTotalDayComparison(1200)",context);
+  assert.match(elements.get('#totalDelta').textContent,/▲ 20.0% vs. dia anterior/);
+  assert.equal(elements.get('#totalDelta').style.color,'var(--green)');
+  vm.runInContext('renderTotalDayComparison(800)',context);
+  assert.match(elements.get('#totalDelta').textContent,/▼ 20.0% vs. dia anterior/);
+  assert.equal(elements.get('#totalDelta').style.color,'#ff6262');
+  vm.runInContext('renderTotalDayComparison(1000)',context);
+  assert.match(elements.get('#totalDelta').textContent,/0.0% vs. dia anterior/);
+  vm.runInContext('comparisons={};renderTotalDayComparison(1000)',context);
+  assert.equal(elements.get('#totalDelta').textContent,'Sem dados do dia anterior');
+  vm.runInContext("comparisons={byScope:{Full:{previousDayGmv:0}}};renderTotalDayComparison(1000)",context);
+  assert.equal(elements.get('#totalDelta').textContent,'Dia anterior sem faturamento');
 });

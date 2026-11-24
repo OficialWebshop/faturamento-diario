@@ -2,6 +2,7 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const { brDateIso, getDailyTargetValue } = require('./site/dist/daily-targets.js');
+const { goalState, dayComparison, retainDayClosings } = require('./site/dist/dashboard-data.js');
 const {
   buildAccounts,
   num,
@@ -401,6 +402,8 @@ function buildPayload(all) {
     updatedAt: latest.at || null,
     dataDate,
     target: getDailyTargetValue(dataDate),
+    goalReachedAt: goalState(snapshots, getDailyTargetValue(dataDate), dataDate).reachedAt,
+    comparisons: dayComparison(all, dataDate),
     series,
     currentChannels: latest.channels || {},
     previousChannels: snapshots.at(-2)?.channels || {},
@@ -732,15 +735,18 @@ async function updateData({ mode: requestedMode = 'auto' } = {}) {
     }
     analytics.sort((a, b) => b.valor - a.valor);
 
-    let snapshots = readJson(SNAPSHOTS, []).filter(s => s.dataDate === currentDay);
+    const savedSnapshots = readJson(SNAPSHOTS, []);
+    let snapshots = savedSnapshots.filter(s => s.dataDate === currentDay);
     const snapshot = { at: now, dataDate: currentDay, slot, channels, orders, business, analytics, accounts: accountStatus };
+    snapshot.goalReached = goalState([...snapshots, snapshot], getDailyTargetValue(currentDay), currentDay);
     const existing = snapshots.findIndex(s => (s.slot || slotKey(s.at)) === slot);
     if (existing >= 0) snapshots[existing] = snapshot; else snapshots.push(snapshot);
     snapshots = snapshots.sort((a, b) => new Date(a.at) - new Date(b.at)).slice(-48);
     for (let i = 0; i < snapshots.length - 1; i++) {
       if (snapshots[i].analytics) delete snapshots[i].analytics;
     }
-    writeJson(SNAPSHOTS, snapshots);
+    const storedSnapshots = retainDayClosings(savedSnapshots, currentDay, snapshots);
+    writeJson(SNAPSHOTS, storedSnapshots);
 
     cycleCompletedByEmpresa.clear();
     activeCycleMode = null;
@@ -753,7 +759,7 @@ async function updateData({ mode: requestedMode = 'auto' } = {}) {
     syncQueue.currentTask = null;
     syncQueue.updatedAt = now;
     reconciliationState = { status: 'ok', pending: 0, message: 'Carga reconciliada sem pendências' };
-    return buildPayload(snapshots);
+    return buildPayload(storedSnapshots);
   })();
 
   try {
