@@ -133,8 +133,13 @@
     return /cancelad|exclu/i.test(String(order?.situacao || ''));
   }
 
+  const COUNTABLE_STATUSES = new Set([
+    'EM ABERTO', 'FATURADO', 'APROVADO', 'PREPARANDO ENVIO',
+    'ENVIADO', 'ENTREGUE', 'PRONTO PARA ENVIO'
+  ]);
+
   function countableSale(order) {
-    return !cancelled(order) && !/^em aberto$/i.test(String(order?.situacao || '').trim());
+    return COUNTABLE_STATUSES.has(normalizeText(order?.situacao));
   }
 
   function ecommerceName(order) {

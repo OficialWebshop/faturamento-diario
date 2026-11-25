@@ -128,7 +128,16 @@ test('TC-202: fronteira de situação (Em aberto vs Cancelado) em pedidos Fulfil
   };
   const rowOpen = classifier.analyticRow(openOrder, 'OFICIALSP', true);
   assert.equal(rowOpen.fulfillment, true);
-  assert.equal(rowOpen.contabilizado, false);
+  assert.equal(rowOpen.contabilizado, true);
+
+  for (const situacao of ['Em aberto', 'Faturado', 'Aprovado', 'Preparando envio', 'Enviado', 'Entregue', 'Pronto para envio']) {
+    assert.equal(classifier.countableSale({ situacao }), true, situacao);
+    assert.equal(classifier.analyticRow({ ...openOrder, situacao }, 'OFICIALSP', true).contabilizado, true, situacao);
+  }
+  assert.equal(classifier.countableSale({ situacao: '  pronto   PARA envio  ' }), true);
+  for (const situacao of ['Cancelado', 'Excluído', 'Reprovado', 'Em digitação', '', null, undefined]) {
+    assert.equal(classifier.countableSale({ situacao }), false, String(situacao));
+  }
 
   const cancelledOrder = {
     ...openOrder,
