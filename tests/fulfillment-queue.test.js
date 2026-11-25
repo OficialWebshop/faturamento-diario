@@ -463,6 +463,8 @@ test('TC-204: integração HTTP de server.js com filtro de marcadores, retry exp
     assert.equal(dataBody.currentChannels.Shopee, 150);
     assert.equal(dataBody.currentChannels.Meli, 250);
     assert.equal(dataBody.metrics.totalGmv, 1100);
+    assert.equal(dataBody.financial.metrics.totalGmv, 1100);
+    assert.equal(dataBody.financial.metrics.totalOrders, 4);
     assert.equal(dataBody.analytics.length, 4);
     assert.ok(dataBody.analytics.every(row => row.fulfillment === true));
 

@@ -3,6 +3,7 @@ const fs = require('fs');
 const path = require('path');
 const { brDateIso, getDailyTargetValue } = require('./site/dist/daily-targets.js');
 const { goalState, dayComparison, retainDayClosings } = require('./site/dist/dashboard-data.js');
+const { financialSale, summarize: summarizeFinancial, projectSnapshot: financialSnapshot } = require('./site/dist/financial-report.js');
 const {
   buildAccounts,
   num,
@@ -357,7 +358,7 @@ async function getOrder(account, summary) {
   return { ...detail, valor: detail.valor || detail.total_pedido || detail.totalVenda || 0, _tinyDetail: true };
 }
 
-function buildPayload(all) {
+function buildPayload(all, includeFinancial = true) {
   const today = brDate(), snapshots = all.filter(s => s.dataDate === today).sort((a, b) => new Date(a.at) - new Date(b.at));
   const names = [...new Set(snapshots.flatMap(s => Object.keys(s.channels || {})))];
   const series = names.map(canal => {
@@ -398,7 +399,7 @@ function buildPayload(all) {
     previousOrders = orderCount;
     return item;
   });
-  return {
+  const payload = {
     updatedAt: latest.at || null,
     dataDate,
     target: getDailyTargetValue(dataDate),
@@ -415,6 +416,8 @@ function buildPayload(all) {
     analytics: latest.analytics || [],
     metrics: { totalGmv, totalOrders, ticket: totalOrders ? totalGmv / totalOrders : 0 }
   };
+  if (includeFinancial) payload.financial = buildPayload(all.map(financialSnapshot).filter(Boolean), false);
+  return payload;
 }
 
 function hasFullDetail(order) {
@@ -491,7 +494,7 @@ async function enrichAccount(account, cache, summaries, { forceRefresh = false }
   if (cacheDirty) writeJson(DETAIL_CACHE, cache);
 
   ensureNotPaused();
-  const unresolved = summaries.filter(summary => countableSale(summary) && !hasFullDetail(cache[`${account.empresa}:${summary.id}`]));
+  const unresolved = summaries.filter(summary => (countableSale(summary) || financialSale(summary)) && !hasFullDetail(cache[`${account.empresa}:${summary.id}`]));
   if (unresolved.length) {
     if (qAcc) {
       qAcc.pendingOrders = unresolved.length;
@@ -736,14 +739,21 @@ async function updateData({ mode: requestedMode = 'auto' } = {}) {
     analytics.sort((a, b) => b.valor - a.valor);
 
     const savedSnapshots = readJson(SNAPSHOTS, []);
+    for (const saved of savedSnapshots) {
+      if (!saved.financial && Array.isArray(saved.analytics)) saved.financial = summarizeFinancial(saved.analytics);
+    }
     let snapshots = savedSnapshots.filter(s => s.dataDate === currentDay);
     const snapshot = { at: now, dataDate: currentDay, slot, channels, orders, business, analytics, accounts: accountStatus };
     snapshot.goalReached = goalState([...snapshots, snapshot], getDailyTargetValue(currentDay), currentDay);
+    snapshot.financial = summarizeFinancial(analytics);
+    const financialHistory = [...snapshots, snapshot].map(financialSnapshot).filter(Boolean);
+    snapshot.financial.goalReached = goalState(financialHistory, getDailyTargetValue(currentDay), currentDay);
     const existing = snapshots.findIndex(s => (s.slot || slotKey(s.at)) === slot);
     if (existing >= 0) snapshots[existing] = snapshot; else snapshots.push(snapshot);
     snapshots = snapshots.sort((a, b) => new Date(a.at) - new Date(b.at)).slice(-48);
     for (let i = 0; i < snapshots.length - 1; i++) {
       if (snapshots[i].analytics) delete snapshots[i].analytics;
+      if (snapshots[i].financial?.analytics) delete snapshots[i].financial.analytics;
     }
     const storedSnapshots = retainDayClosings(savedSnapshots, currentDay, snapshots);
     writeJson(SNAPSHOTS, storedSnapshots);

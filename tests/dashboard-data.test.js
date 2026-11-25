@@ -3,6 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const vm = require('node:vm');
 const {normalize,goalState,dayComparison} = require('../site/dist/dashboard-data');
+const {projectSnapshot:financialSnapshot}=require('../site/dist/financial-report');
 
 const payload = {
   dataDate:'2026-11-17', target:262832, updatedAt:'2026-11-17T21:00:00Z',
@@ -53,8 +54,8 @@ test('Oficial hourly chart uses company snapshots and excludes Prioriza',()=>{
   assert.deepEqual(official.previousChannels,{Meli:100});
   // Verify the actual server response carries the saved company history.
   const server=fs.readFileSync('server.js','utf8');
-  const build=server.slice(server.indexOf('function buildPayload(all)'),server.indexOf('function hasFullDetail'));
-  const context=vm.createContext({goalState,dayComparison,brDate:()=>payload.dataDate,num:Number,getDailyTargetValue:()=>100,SOURCE_LABEL:'test',slotKey:()=>'',snapshots:history.map((row,i)=>({...row,dataDate:payload.dataDate,at:`2026-11-17T${String(11+i).padStart(2,'0')}:00:00Z`,channels:{Meli:100},orders:{Meli:1}}))});
+  const build=server.slice(server.indexOf('function buildPayload(all'),server.indexOf('function hasFullDetail'));
+  const context=vm.createContext({goalState,dayComparison,financialSnapshot,brDate:()=>payload.dataDate,num:Number,getDailyTargetValue:()=>100,SOURCE_LABEL:'test',slotKey:()=>'',snapshots:history.map((row,i)=>({...row,dataDate:payload.dataDate,at:`2026-11-17T${String(11+i).padStart(2,'0')}:00:00Z`,channels:{Meli:100},orders:{Meli:1}}))});
   vm.runInContext(build,context);
   assert.equal(vm.runInContext('buildPayload(snapshots).snapshotHistory[0].business[0].gmv',context),80);
   assert.equal(vm.runInContext('buildPayload(snapshots).goalReachedAt.Consolidado',context),'2026-11-17T11:00:00Z');
@@ -95,6 +96,7 @@ test('actual frontend consumes legacy response and displays executive KPIs and m
   const context=vm.createContext({Intl,Date,console,document:{body:{classList:{toggle(){}}},
     querySelector:s=>s==='.stream-health'?health:elements.get(s)||null,querySelectorAll:()=>[]
   },setInterval(){},setTimeout(){},fetch:async()=>({ok:true,json:async()=>payload})});
+  vm.runInContext(fs.readFileSync('site/dist/financial-report.js','utf8'),context);
   vm.runInContext(fs.readFileSync('site/dist/dashboard-data.js','utf8'),context);
   vm.runInContext(fs.readFileSync('site/dist/app.js','utf8'),context);
   assert.equal(await vm.runInContext('loadBigQuery(false)',context),true);
