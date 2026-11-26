@@ -117,6 +117,8 @@ function resolveSyncMode(requestedMode, dailyState, nowMs = Date.now(), today = 
 }
 
 let updating = null;
+let updatingDate = null;
+const historicalRefreshes = new Map();
 let recoveryTimer = null;
 let cancelActiveDelay = null;
 let reconciliationState = { status: 'ok', pending: 0, message: '' };
@@ -404,7 +406,7 @@ function buildPayload(all, includeFinancial = true, requestedDate = brDate()) {
     return item;
   });
   const payload = {
-    updatedAt: latest.at || null,
+    updatedAt: latest.reconciledAt || latest.at || null,
     dataDate,
     today,
     isHistorical: dataDate !== today,
@@ -447,7 +449,7 @@ function mergeCurrentOrder(summary, detail) {
   return order;
 }
 
-async function enrichAccount(account, cache, summaries, { forceRefresh = false } = {}) {
+async function enrichAccount(account, cache, summaries, { forceRefresh = false, requireFresh = false } = {}) {
   const qAcc = getAccountQueueEntry(account.empresa);
   const pending = summaries.filter(summary => forceRefresh || !hasUsableCache(account, cache[`${account.empresa}:${summary.id}`]));
   if (qAcc) {
@@ -466,6 +468,7 @@ async function enrichAccount(account, cache, summaries, { forceRefresh = false }
   };
 
   let cacheDirty = false;
+  const refreshed = new Set();
   for (let i = 0; i < pending.length; i++) {
     ensureNotPaused();
     const summary = pending[i];
@@ -479,6 +482,7 @@ async function enrichAccount(account, cache, summaries, { forceRefresh = false }
       const detail = await getOrder(account, summary);
       if (hasFullDetail(detail)) {
         cache[`${account.empresa}:${summary.id}`] = detail;
+        refreshed.add(String(summary.id));
         cacheDirty = true;
         if (qAcc) {
           qAcc.processedOrders += 1;
@@ -500,7 +504,9 @@ async function enrichAccount(account, cache, summaries, { forceRefresh = false }
   if (cacheDirty) writeJson(DETAIL_CACHE, cache);
 
   ensureNotPaused();
-  const unresolved = summaries.filter(summary => (countableSale(summary) || financialSale(summary)) && !hasFullDetail(cache[`${account.empresa}:${summary.id}`]));
+  const unresolved = summaries.filter(summary => requireFresh
+    ? !refreshed.has(String(summary.id))
+    : (countableSale(summary) || financialSale(summary)) && !hasFullDetail(cache[`${account.empresa}:${summary.id}`]));
   if (unresolved.length) {
     if (qAcc) {
       qAcc.pendingOrders = unresolved.length;
@@ -528,9 +534,105 @@ async function enrichAccount(account, cache, summaries, { forceRefresh = false }
     .filter(item => !cancelled(item.order) && shouldIncludeOrder(item.order, account.empresa));
 }
 
+function aggregateDay(ordersByAccount, currentDay) {
+  const channels = {}, orders = {}, business = [], analytics = [], accountStatus = [];
+  for (const account of accounts) {
+    const accountMap = ordersByAccount[account.empresa] || {};
+    const items = Object.values(accountMap).filter(
+      item => item?.order && isOrderFromDate(item.order, currentDay) && !cancelled(item.order) && shouldIncludeOrder(item.order, account.empresa)
+    );
+    accountStatus.push({ empresa: account.empresa, pedidos: items.length });
+    const company = {};
+    for (const item of items) {
+      const canal = channel(item.order, account.empresa), gmv = orderValue(item.order);
+      analytics.push(analyticRow(item.order, account.empresa, item.detailed));
+      if (!countableSale(item.order)) continue;
+      channels[canal] = (channels[canal] || 0) + gmv;
+      orders[canal] = (orders[canal] || 0) + 1;
+      company[canal] = (company[canal] || 0) + gmv;
+    }
+    for (const [canal, gmv] of Object.entries(company)) {
+      business.push({
+        empresa: account.empresa,
+        canal,
+        gmv,
+        fullGmv: analytics.filter(row => row.empresa === account.empresa && row.canal === canal && row.contabilizado && row.fulfillment).reduce((sum, row) => sum + num(row.valor), 0),
+        pedidos: items.filter(x => countableSale(x.order) && channel(x.order, account.empresa) === canal).length
+      });
+    }
+  }
+  analytics.sort((a, b) => b.valor - a.valor);
+
+  return { channels, orders, business, analytics, accounts: accountStatus };
+}
+
+async function reconcileHistoricalDate(dataDate) {
+  ensureNotPaused();
+  if (updating) {
+    if (updatingDate === dataDate) return updating;
+    try { await updating; } catch {}
+    return reconcileHistoricalDate(dataDate);
+  }
+  updatingDate = dataDate;
+  syncQueue.status = 'running';
+  syncQueue.startedAt = new Date().toISOString();
+  reconciliationState = { status: 'updating', pending: 0, message: `Reconciliando ${dataDate} com o Tiny` };
+  updating = (async () => {
+    const cache = readDetailCache();
+    const ordersByAccount = {};
+    const date = dataDate.split('-').reverse().join('/');
+    for (const account of accounts) {
+      ensureNotPaused();
+      const summaries = (await searchOrders(account, { mode: 'full', date }))
+        .filter(order => isOrderFromDate(order, dataDate));
+      // A historical reconciliation must refresh details even when a cached copy exists.
+      const items = await enrichAccount(account, cache, summaries, { forceRefresh: true, requireFresh: true });
+      ordersByAccount[account.empresa] = Object.fromEntries(items.map(item => [String(item.order.id || item.order.numero), item]));
+    }
+    ensureNotPaused();
+    const saved = snapshotStore.readForDate(dataDate);
+    const previous = saved.filter(snapshot => snapshot.dataDate === dataDate).at(-1);
+    // Correct the saved closing without adding a capture to another day or changing earlier captures.
+    const snapshot = {
+      ...previous,
+      dataDate,
+      at: previous?.at || `${dataDate}T23:59:59.000-03:00`,
+      slot: previous?.slot || (previous ? slotKey(previous.at) : '23:30'),
+      reconciledAt: new Date().toISOString(),
+      ...aggregateDay(ordersByAccount, dataDate)
+    };
+    snapshot.financial = { ...summarizeFinancial(snapshot.analytics), goalReached: previous?.financial?.goalReached };
+    snapshotStore.save([snapshot]);
+    writeJson(SNAPSHOTS, retainDayClosings(readJson(SNAPSHOTS, []), dataDate,
+      saved.filter(item => item.dataDate === dataDate && item.at !== previous?.at).concat(snapshot)));
+    reconciliationState = { status: 'ok', pending: 0, message: `Data ${date} reconciliada com o Tiny` };
+    syncQueue.status = 'idle';
+    syncQueue.lastError = null;
+    syncQueue.currentTask = null;
+    syncQueue.updatedAt = snapshot.reconciledAt;
+    return buildPayload(snapshotStore.readForDate(dataDate), true, dataDate);
+  })();
+  try {
+    return await updating;
+  } catch (error) {
+    syncQueue.status = syncQueue.paused ? 'paused' : 'failed';
+    syncQueue.lastError = error.message;
+    syncQueue.currentTask = null;
+    reconciliationState = { status: syncQueue.status, pending: Number(error.pending || 0), message: error.message };
+    throw error;
+  } finally {
+    updating = null;
+    updatingDate = null;
+  }
+}
+
 async function updateData({ mode: requestedMode = 'auto' } = {}) {
   ensureNotPaused();
-  if (updating) return updating;
+  if (updating) {
+    if (updatingDate === brDate()) return updating;
+    try { await updating; } catch {}
+    return updateData({ mode: requestedMode });
+  }
 
   if (recoveryTimer) {
     clearTimeout(recoveryTimer);
@@ -577,6 +679,7 @@ async function updateData({ mode: requestedMode = 'auto' } = {}) {
       : 'Conferindo todos os pedidos do dia'
   };
 
+  updatingDate = today;
   updating = (async () => {
     const cache = readDetailCache();
     let activeAccount = null;
@@ -716,42 +819,16 @@ async function updateData({ mode: requestedMode = 'auto' } = {}) {
     syncQueue.lastIncrementalAt = now;
     writeDailyState(dailyState);
 
-    const channels = {}, orders = {}, business = [], analytics = [], accountStatus = [];
-    for (const account of accounts) {
-      const accountMap = dailyState.ordersByAccount[account.empresa] || {};
-      const items = Object.values(accountMap).filter(
-        item => item?.order && isOrderFromDate(item.order, currentDay) && !cancelled(item.order) && shouldIncludeOrder(item.order, account.empresa)
-      );
-      accountStatus.push({ empresa: account.empresa, pedidos: items.length });
-      const company = {};
-      for (const item of items) {
-        const canal = channel(item.order, account.empresa), gmv = orderValue(item.order);
-        analytics.push(analyticRow(item.order, account.empresa, item.detailed));
-        if (!countableSale(item.order)) continue;
-        channels[canal] = (channels[canal] || 0) + gmv;
-        orders[canal] = (orders[canal] || 0) + 1;
-        company[canal] = (company[canal] || 0) + gmv;
-      }
-      for (const [canal, gmv] of Object.entries(company)) {
-        business.push({
-          empresa: account.empresa,
-          canal,
-          gmv,
-          fullGmv: analytics.filter(row => row.empresa === account.empresa && row.canal === canal && row.contabilizado && row.fulfillment).reduce((sum, row) => sum + num(row.valor), 0),
-          pedidos: items.filter(x => countableSale(x.order) && channel(x.order, account.empresa) === canal).length
-        });
-      }
-    }
-    analytics.sort((a, b) => b.valor - a.valor);
+    const totals = aggregateDay(dailyState.ordersByAccount, currentDay);
 
     const savedSnapshots = snapshotStore.readForDate(currentDay);
     for (const saved of savedSnapshots) {
       if (!saved.financial && Array.isArray(saved.analytics)) saved.financial = summarizeFinancial(saved.analytics);
     }
     let snapshots = savedSnapshots.filter(s => s.dataDate === currentDay);
-    const snapshot = { at: now, dataDate: currentDay, slot, channels, orders, business, analytics, accounts: accountStatus };
+    const snapshot = { at: now, dataDate: currentDay, slot, ...totals };
     snapshot.goalReached = goalState([...snapshots, snapshot], getDailyTargetValue(currentDay), currentDay);
-    snapshot.financial = summarizeFinancial(analytics);
+    snapshot.financial = summarizeFinancial(totals.analytics);
     const financialHistory = [...snapshots, snapshot].map(financialSnapshot).filter(Boolean);
     snapshot.financial.goalReached = goalState(financialHistory, getDailyTargetValue(currentDay), currentDay);
     const existing = snapshots.findIndex(s => (s.slot || slotKey(s.at)) === slot);
@@ -834,6 +911,7 @@ async function updateData({ mode: requestedMode = 'auto' } = {}) {
     throw error;
   } finally {
     updating = null;
+    updatingDate = null;
   }
 }
 
@@ -951,8 +1029,8 @@ const server = http.createServer(async (req, res) => {
   }
 
   if (url.pathname === '/api/update-data') {
-    if (requestedDate !== brDate()) {
-      return json(res, 200, buildPayload(snapshotStore.readForDate(requestedDate), true, requestedDate));
+    if (requestedDate > brDate()) {
+      return json(res, 400, { error: 'Não é possível reconciliar uma data futura.' });
     }
     if (process.env.READ_ONLY_PREVIEW === '1') {
       return json(res, 409, { error: 'Prévia local protegida: atualização da API desativada' });
@@ -966,9 +1044,23 @@ const server = http.createServer(async (req, res) => {
     }
     const body = req.method === 'POST' ? await readRequestBody(req) : {};
     const requestedMode = url.searchParams.get('mode') || body.mode || 'auto';
+    if (requestedDate !== brDate() && url.searchParams.get('background') === '1') {
+      let job = historicalRefreshes.get(requestedDate);
+      if (job?.status !== 'pending') {
+        job = { status: 'pending' };
+        historicalRefreshes.set(requestedDate, job);
+        reconcileHistoricalDate(requestedDate).then(() => {
+          job.status = 'completed';
+        }, error => {
+          job.status = 'failed';
+          job.error = error.message;
+        });
+      }
+      return json(res, 202, { dataDate: requestedDate, historicalReconciliation: job });
+    }
     try {
       return json(res, 200, {
-        ...await updateData({ mode: requestedMode }),
+        ...await (requestedDate === brDate() ? updateData({ mode: requestedMode }) : reconcileHistoricalDate(requestedDate)),
         reconciliation: reconciliationState,
         queue: getQueueSnapshot()
       });
@@ -986,6 +1078,7 @@ const server = http.createServer(async (req, res) => {
   if (url.pathname === '/api/data') {
     return json(res, 200, {
       ...buildPayload(snapshotStore.readForDate(requestedDate), true, requestedDate),
+      historicalReconciliation: historicalRefreshes.get(requestedDate) || null,
       updating: Boolean(updating),
       reconciliation: reconciliationState,
       queue: getQueueSnapshot()

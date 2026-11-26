@@ -43,7 +43,7 @@ test('SQLite migrates once, preserves daily history and survives reopening', asy
   } finally { store.close(); }
 });
 
-test('date API returns the selected day, including financial data, without changing it on update', async t => {
+test('date API returns the selected day and protects read-only previews from reconciliation', async t => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'dashboard-date-api-'));
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
   const legacy = path.join(directory, 'snapshots.json');
@@ -88,6 +88,6 @@ test('date API returns the selected day, including financial data, without chang
   const empty = (await get('/api/data?date=2026-11-20')).body;
   assert.equal(empty.dataDate, '2026-11-20');
   assert.equal(empty.metrics.totalGmv, 0);
-  assert.equal((await get('/api/update-data?date=2026-11-24')).body.metrics.totalGmv, 150);
+  assert.equal((await get('/api/update-data?date=2026-11-24')).status, 409);
   assert.equal((await get('/api/data?date=2026-02-30')).status, 400);
 });
