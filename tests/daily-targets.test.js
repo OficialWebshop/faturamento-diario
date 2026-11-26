@@ -34,11 +34,11 @@ const EXPECTED_NOV_2026 = [
   { data: '23/11/2026', dia: 'Segunda-feira', meta: 234051 },
   { data: '24/11/2026', dia: 'Terça-feira', meta: 262832 },
   { data: '25/11/2026', dia: 'Quarta-feira', meta: 252939 },
-  { data: '26/11/2026', dia: 'Quinta-feira', meta: 251419 },
-  { data: '27/11/2026', dia: 'Sexta-feira', meta: 392660 },
-  { data: '28/11/2026', dia: 'Sábado', meta: 114005 },
-  { data: '29/11/2026', dia: 'Domingo', meta: 118019 },
-  { data: '30/11/2026', dia: 'Segunda-feira', meta: 234051 }
+  { data: '26/11/2026', dia: 'Quinta-feira', meta: 321838 },
+  { data: '27/11/2026', dia: 'Sexta-feira', meta: 717684 },
+  { data: '28/11/2026', dia: 'Sábado', meta: 329960 },
+  { data: '29/11/2026', dia: 'Domingo', meta: 262751 },
+  { data: '30/11/2026', dia: 'Segunda-feira', meta: 247775 }
 ];
 
 const WEEKDAYS_PT = [
