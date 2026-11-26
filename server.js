@@ -1,6 +1,7 @@
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
+const { openSnapshotStore, validDate } = require('./snapshot-store');
 const { brDateIso, getDailyTargetValue } = require('./site/dist/daily-targets.js');
 const { goalState, dayComparison, retainDayClosings } = require('./site/dist/dashboard-data.js');
 const { financialSale, summarize: summarizeFinancial, projectSnapshot: financialSnapshot } = require('./site/dist/financial-report.js');
@@ -39,6 +40,9 @@ function loadEnv(rootDir = ROOT, targetEnv = process.env) {
 loadEnv();
 
 const SNAPSHOTS = process.env.SNAPSHOTS_FILE || path.join(ROOT, 'data', 'hourly-snapshots.json');
+const SQLITE_FILE = process.env.SQLITE_FILE || path.join(path.dirname(SNAPSHOTS), 'dashboard.sqlite');
+let snapshotStore;
+const snapshotStoreReady = openSnapshotStore(SQLITE_FILE, SNAPSHOTS).then(store => { snapshotStore = store; });
 const DETAIL_CACHE = process.env.DETAIL_CACHE_FILE || path.join(ROOT, 'data', 'tiny-order-cache.json');
 const DAILY_STATE_FILE = process.env.DAILY_STATE_FILE || path.join(path.dirname(SNAPSHOTS), 'daily-orders-state.json');
 const PORT = Number(process.env.PORT || 8787);
@@ -358,8 +362,8 @@ async function getOrder(account, summary) {
   return { ...detail, valor: detail.valor || detail.total_pedido || detail.totalVenda || 0, _tinyDetail: true };
 }
 
-function buildPayload(all, includeFinancial = true) {
-  const today = brDate(), snapshots = all.filter(s => s.dataDate === today).sort((a, b) => new Date(a.at) - new Date(b.at));
+function buildPayload(all, includeFinancial = true, requestedDate = brDate()) {
+  const today = brDate(), snapshots = all.filter(s => s.dataDate === requestedDate).sort((a, b) => new Date(a.at) - new Date(b.at));
   const names = [...new Set(snapshots.flatMap(s => Object.keys(s.channels || {})))];
   const series = names.map(canal => {
     let previous = 0;
@@ -373,7 +377,7 @@ function buildPayload(all, includeFinancial = true) {
     };
   });
   const latest = snapshots.at(-1) || {};
-  const dataDate = latest.dataDate || today;
+  const dataDate = latest.dataDate || requestedDate;
   const totalGmv = Object.values(latest.channels || {}).reduce((sum, value) => sum + num(value), 0);
   const totalOrders = Object.values(latest.orders || {}).reduce((sum, value) => sum + num(value), 0);
   let previousGmv = null, previousOrders = null;
@@ -402,6 +406,8 @@ function buildPayload(all, includeFinancial = true) {
   const payload = {
     updatedAt: latest.at || null,
     dataDate,
+    today,
+    isHistorical: dataDate !== today,
     target: getDailyTargetValue(dataDate),
     goalReachedAt: goalState(snapshots, getDailyTargetValue(dataDate), dataDate).reachedAt,
     comparisons: dayComparison(all, dataDate),
@@ -416,7 +422,7 @@ function buildPayload(all, includeFinancial = true) {
     analytics: latest.analytics || [],
     metrics: { totalGmv, totalOrders, ticket: totalOrders ? totalGmv / totalOrders : 0 }
   };
-  if (includeFinancial) payload.financial = buildPayload(all.map(financialSnapshot).filter(Boolean), false);
+  if (includeFinancial) payload.financial = buildPayload(all.map(financialSnapshot).filter(Boolean), false, requestedDate);
   return payload;
 }
 
@@ -738,7 +744,7 @@ async function updateData({ mode: requestedMode = 'auto' } = {}) {
     }
     analytics.sort((a, b) => b.valor - a.valor);
 
-    const savedSnapshots = readJson(SNAPSHOTS, []);
+    const savedSnapshots = snapshotStore.readForDate(currentDay);
     for (const saved of savedSnapshots) {
       if (!saved.financial && Array.isArray(saved.analytics)) saved.financial = summarizeFinancial(saved.analytics);
     }
@@ -755,7 +761,8 @@ async function updateData({ mode: requestedMode = 'auto' } = {}) {
       if (snapshots[i].analytics) delete snapshots[i].analytics;
       if (snapshots[i].financial?.analytics) delete snapshots[i].financial.analytics;
     }
-    const storedSnapshots = retainDayClosings(savedSnapshots, currentDay, snapshots);
+    const storedSnapshots = retainDayClosings(readJson(SNAPSHOTS, []), currentDay, snapshots);
+    snapshotStore.save(snapshots);
     writeJson(SNAPSHOTS, storedSnapshots);
 
     cycleCompletedByEmpresa.clear();
@@ -903,8 +910,12 @@ function serve(req, res) {
   });
 }
 
-http.createServer(async (req, res) => {
+const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://localhost');
+  const requestedDate = url.searchParams.get('date') || brDate();
+  if (['/api/data', '/api/update-data'].includes(url.pathname) && !validDate(requestedDate)) {
+    return json(res, 400, { error: 'Data inválida. Use AAAA-MM-DD.' });
+  }
 
   if (url.pathname === '/api/queue' && req.method === 'GET') {
     return json(res, 200, {
@@ -940,6 +951,9 @@ http.createServer(async (req, res) => {
   }
 
   if (url.pathname === '/api/update-data') {
+    if (requestedDate !== brDate()) {
+      return json(res, 200, buildPayload(snapshotStore.readForDate(requestedDate), true, requestedDate));
+    }
     if (process.env.READ_ONLY_PREVIEW === '1') {
       return json(res, 409, { error: 'Prévia local protegida: atualização da API desativada' });
     }
@@ -971,7 +985,7 @@ http.createServer(async (req, res) => {
 
   if (url.pathname === '/api/data') {
     return json(res, 200, {
-      ...buildPayload(readJson(SNAPSHOTS, [])),
+      ...buildPayload(snapshotStore.readForDate(requestedDate), true, requestedDate),
       updating: Boolean(updating),
       reconciliation: reconciliationState,
       queue: getQueueSnapshot()
@@ -979,7 +993,11 @@ http.createServer(async (req, res) => {
   }
 
   serve(req, res);
-}).listen(PORT, () => {
-  console.log(`Black Friday BI Tiny: http://localhost:${PORT}`);
+});
+snapshotStoreReady.then(() => server.listen(PORT, () => {
+  console.log(`Black Friday BI Tiny: http://localhost:${server.address().port}`);
   if (process.env.DISABLE_AUTO_UPDATE !== '1') schedule();
+})).catch(error => {
+  console.error('Falha ao abrir o histórico SQLite:', error.message);
+  process.exitCode = 1;
 });
