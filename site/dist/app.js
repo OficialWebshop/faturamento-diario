@@ -89,7 +89,46 @@ async function waitHistoricalReconciliation(date){
     if(job.status==='completed')return;
   }
 }
-document.querySelector('#refreshBtn').addEventListener('click',async e=>{e.currentTarget.classList.add('loading');try{const date=selectedDate||todayDate||'';const response=await fetch(`/api/update-data?date=${encodeURIComponent(date)}&background=1`,{cache:'no-store'});if(!response.ok)throw new Error((await response.json()).error||'Falha na reconciliação');if(response.status===202)await waitHistoricalReconciliation(date);await loadBigQuery(false);toast(`Tiny reconciliado para ${date.split('-').reverse().join('/')}`)}catch(error){toast('Tiny: '+error.message)}finally{e.currentTarget.classList.remove('loading')}});
+function startRefreshProgress(){
+  const container=document.querySelector('#refreshProgress'),bar=document.querySelector('#refreshProgressBar'),label=document.querySelector('#refreshProgressLabel');
+  container.hidden=false;container.classList.remove('complete');bar.value=0;label.textContent='0% • Preparando atualização';
+  let active=true,polling=false;
+  const timer=setInterval(async()=>{
+    if(polling)return;
+    polling=true;
+    try{
+      const response=await fetch('/api/queue',{cache:'no-store'});
+      if(!response.ok)return;
+      const queue=await response.json(),accounts=queue.accounts||[];
+      if(!active||!accounts.length||queue.status!=='running')return;
+      const work=accounts.reduce((sum,account)=>sum+(account.status==='completed'?1:account.status==='enriching'&&account.foundOrders>0?Math.min(1,Number(account.processedOrders||0)/account.foundOrders):0),0);
+      const percent=Math.min(95,Math.floor(work/accounts.length*95));
+      bar.value=percent;label.textContent=percent+'% • Faltam '+(100-percent)+'%';
+      label.title=accounts.filter(account=>account.status==='completed').length+'/'+accounts.length+' contas concluídas; progresso por contas e detalhes de pedidos';
+    }catch{}finally{polling=false}
+  },1000);
+  return success=>{
+    active=false;clearInterval(timer);
+    if(success){bar.value=100;container.classList.add('complete');label.textContent='100% • Carregamento concluído'}
+    else label.textContent='Falha no carregamento';
+  };
+}
+async function refreshDashboard(event){
+  const button=event.currentTarget;
+  if(button.disabled)return;
+  button.disabled=true;button.classList.add('loading');
+  const finishProgress=startRefreshProgress();
+  try{
+    const date=selectedDate||todayDate||'';
+    const response=await fetch('/api/update-data?date='+encodeURIComponent(date)+'&background=1',{cache:'no-store'});
+    if(!response.ok)throw new Error((await response.json()).error||'Falha na reconciliação');
+    if(response.status===202)await waitHistoricalReconciliation(date);
+    if(!await loadBigQuery(false))throw new Error('Não foi possível carregar os dados atualizados');
+    finishProgress(true);toast('Tiny reconciliado para '+date.split('-').reverse().join('/'));
+  }catch(error){finishProgress(false);toast('Tiny: '+error.message)}
+  finally{button.classList.remove('loading');button.disabled=false}
+}
+document.querySelector('#refreshBtn').addEventListener('click',refreshDashboard);
 document.querySelector('#dashboardDate').addEventListener('change',async e=>{selectedDate=e.target.value;await loadBigQuery(false)});
 document.querySelector('#channelFilter').innerHTML+=[...channels].map(c=>`<option>${c.name}</option>`).join('');document.querySelector('#channelFilter').addEventListener('change',e=>{activeChannel=e.target.value==='all'?'all':e.target.value;renderChart()});
 document.querySelectorAll('.view-tab').forEach(button=>button.addEventListener('click',()=>{document.querySelectorAll('.view-tab,.report-view').forEach(x=>x.classList.remove('active'));button.classList.add('active');document.querySelector('#'+button.dataset.view).classList.add('active');if(button.dataset.view==='dashboardView')setReport(button.dataset.report||'executive')}));document.querySelector('#analyticSearch').addEventListener('input',renderAnalytics);document.querySelector('#analyticCompany').addEventListener('change',renderAnalytics);document.querySelector('#analyticChannel').addEventListener('change',renderAnalytics);

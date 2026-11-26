@@ -12,6 +12,19 @@ html,body{margin:0;padding:0;width:100vw;height:100vh;height:100dvh;overflow:hid
 .brand h1{font-size:clamp(22px,2.3vw,34px)}.brand p{font-size:clamp(10px,1vw,15px)}
 .official-mark{margin-left:auto}.official-mark img{width:100px;height:50px}
 .actions{min-width:0;gap:8px}.actions .status{margin-left:0;padding-left:10px}
+.refresh-control{position:relative;flex-shrink:0}
+.refresh-progress{position:absolute;top:calc(100% + 3px);left:0;right:0;line-height:1.2}
+.refresh-progress[hidden]{display:none}
+.refresh-progress progress{display:block;width:100%;height:3px;border:0;border-radius:3px;overflow:hidden;appearance:none;background:#343434;accent-color:var(--orange)}
+.refresh-progress progress::-webkit-progress-bar{background:#343434}
+.refresh-progress progress::-webkit-progress-value{background:var(--orange)}
+.refresh-progress progress::-moz-progress-bar{background:var(--orange)}
+.refresh-progress small{display:block;margin-top:2px;font-size:7px;color:#ddd;white-space:nowrap}
+.refresh-progress.complete progress{accent-color:var(--green)}
+.refresh-progress.complete progress::-webkit-progress-value{background:var(--green)}
+.refresh-progress.complete progress::-moz-progress-bar{background:var(--green)}
+.refresh-progress.complete small{color:var(--green)}
+.actions #refreshBtn:disabled{cursor:wait}
 .view-tabs{height:30px;margin:0;align-items:center}.view-tab{padding:8px 14px}
 .scope-carousel{height:36px;min-height:36px;margin:0;padding:4px 10px;grid-template-columns:170px 1fr}.scope-carousel>div:first-child{margin:0}
 .scope-buttons{gap:6px}.scope-button{min-height:27px}.scope-carousel strong{font-size:16px}
@@ -84,6 +97,8 @@ footer{display:flex;flex-shrink:0;margin:0;min-height:16px;font-size:8px;gap:8px
   .brand{flex:1;gap:6px}.brand img{width:38px;height:38px;flex-basis:38px}.brand h1{font-size:20px;white-space:normal}.brand .eyebrow{font-size:6px}.brand p{font-size:9px}
   .actions{display:flex;width:100%;gap:7px}.actions .date-filter{flex:1;width:auto;min-width:0;height:36px}.date-filter input{font-size:16px;width:100%;min-width:0}
   .actions #refreshBtn{height:36px;width:auto;font-size:10px;flex:1;padding:0 8px;justify-content:center}.actions .status,.actions .upload{display:none}
+  .actions .refresh-control{flex:1;min-width:0}.actions .refresh-control #refreshBtn{width:100%}
+  .topbar:has(.refresh-progress:not([hidden])){padding-bottom:22px}
   .view-tabs{height:30px}.view-tab{min-height:30px;flex:1;font-size:9px;padding:8px 5px;text-align:center}
   .scope-carousel{display:block;height:38px;min-height:38px;padding:2px 0;background:transparent;border:0}.scope-carousel>div:first-child{display:none}
   .scope-buttons{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));overflow:hidden;padding:0;gap:5px}.scope-button{font-size:10px;height:34px;padding:0 4px}

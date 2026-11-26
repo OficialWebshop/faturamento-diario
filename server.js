@@ -576,6 +576,12 @@ async function reconcileHistoricalDate(dataDate) {
   updatingDate = dataDate;
   syncQueue.status = 'running';
   syncQueue.startedAt = new Date().toISOString();
+  for (const account of syncQueue.accounts) {
+    account.status = 'pending';
+    account.foundOrders = 0;
+    account.processedOrders = 0;
+    account.pendingOrders = 0;
+  }
   reconciliationState = { status: 'updating', pending: 0, message: `Reconciliando ${dataDate} com o Tiny` };
   updating = (async () => {
     const cache = readDetailCache();

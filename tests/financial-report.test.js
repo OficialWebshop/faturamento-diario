@@ -51,7 +51,7 @@ test('API provides separate totals and history without changing executive metric
 test('report switches reuse the dashboard and preserve the analytical table and day comparison',async()=>{
   const result=payload();result.comparisons={byScope:{Consolidado:{previousDayGmv:500}}};
   const html=fs.readFileSync('site/dist/index.html','utf8');
-  assert.match(html,/data-report="financial">RELATÓRIO FINANCEIRO/);
+  assert.match(html,/data-report="financial">PAINEL FINANCEIRO/);
   const nodes=new Map([...html.matchAll(/id="([^"]+)"/g)].map(match=>['#'+match[1],{textContent:'',innerHTML:'',value:'all',style:{},dataset:{},classList:{add(){},remove(){},toggle(){}},setAttribute(){},open:false,close(){this.open=false},listeners:{},addEventListener(type,fn){this.listeners[type]=fn}}]));
   const health={classList:{toggle(){}},querySelector:()=>({textContent:''})};
   const context=vm.createContext({Intl,Date,console,document:{body:{classList:{toggle(){}}},querySelector:selector=>selector==='.stream-health'?health:nodes.get(selector),querySelectorAll:()=>[]},localStorage:{getItem:()=>null,setItem(){}},setInterval(){},setTimeout(){},fetch:async()=>({ok:true,json:async()=>result})});
