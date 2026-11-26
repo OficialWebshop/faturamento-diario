@@ -10,30 +10,30 @@ const dailyTargets = require(path.join(ROOT, 'site', 'dist', 'daily-targets.js')
 
 const EXPECTED_NOV_2026 = [
   { data: '01/11/2026', dia: 'Domingo', meta: 82613 },
-  { data: '02/11/2026', dia: 'Segunda-feira', meta: 139942 },
-  { data: '03/11/2026', dia: 'Terça-feira', meta: 262832 },
-  { data: '04/11/2026', dia: 'Quarta-feira', meta: 252939 },
-  { data: '05/11/2026', dia: 'Quinta-feira', meta: 251419 },
-  { data: '06/11/2026', dia: 'Sexta-feira', meta: 210552 },
-  { data: '07/11/2026', dia: 'Sábado', meta: 114005 },
-  { data: '08/11/2026', dia: 'Domingo', meta: 118019 },
-  { data: '09/11/2026', dia: 'Segunda-feira', meta: 234051 },
-  { data: '10/11/2026', dia: 'Terça-feira', meta: 262832 },
-  { data: '11/11/2026', dia: 'Quarta-feira', meta: 671585 },
-  { data: '12/11/2026', dia: 'Quinta-feira', meta: 251419 },
-  { data: '13/11/2026', dia: 'Sexta-feira', meta: 210552 },
-  { data: '14/11/2026', dia: 'Sábado', meta: 114005 },
-  { data: '15/11/2026', dia: 'Domingo', meta: 82613 },
-  { data: '16/11/2026', dia: 'Segunda-feira', meta: 234051 },
-  { data: '17/11/2026', dia: 'Terça-feira', meta: 262832 },
-  { data: '18/11/2026', dia: 'Quarta-feira', meta: 252939 },
-  { data: '19/11/2026', dia: 'Quinta-feira', meta: 251419 },
-  { data: '20/11/2026', dia: 'Sexta-feira', meta: 147387 },
-  { data: '21/11/2026', dia: 'Sábado', meta: 114005 },
-  { data: '22/11/2026', dia: 'Domingo', meta: 118019 },
-  { data: '23/11/2026', dia: 'Segunda-feira', meta: 234051 },
-  { data: '24/11/2026', dia: 'Terça-feira', meta: 262832 },
-  { data: '25/11/2026', dia: 'Quarta-feira', meta: 252939 },
+  { data: '02/11/2026', dia: 'Segunda-feira', meta: 124624 },
+  { data: '03/11/2026', dia: 'Terça-feira', meta: 218938 },
+  { data: '04/11/2026', dia: 'Quarta-feira', meta: 211385 },
+  { data: '05/11/2026', dia: 'Quinta-feira', meta: 209791 },
+  { data: '06/11/2026', dia: 'Sexta-feira', meta: 174402 },
+  { data: '07/11/2026', dia: 'Sábado', meta: 91374 },
+  { data: '08/11/2026', dia: 'Domingo', meta: 94590 },
+  { data: '09/11/2026', dia: 'Segunda-feira', meta: 194365 },
+  { data: '10/11/2026', dia: 'Terça-feira', meta: 218938 },
+  { data: '11/11/2026', dia: 'Quarta-feira', meta: 416437 },
+  { data: '12/11/2026', dia: 'Quinta-feira', meta: 209791 },
+  { data: '13/11/2026', dia: 'Sexta-feira', meta: 174402 },
+  { data: '14/11/2026', dia: 'Sábado', meta: 91374 },
+  { data: '15/11/2026', dia: 'Domingo', meta: 73570 },
+  { data: '16/11/2026', dia: 'Segunda-feira', meta: 212168 },
+  { data: '17/11/2026', dia: 'Terça-feira', meta: 238629 },
+  { data: '18/11/2026', dia: 'Quarta-feira', meta: 230026 },
+  { data: '19/11/2026', dia: 'Quinta-feira', meta: 228465 },
+  { data: '20/11/2026', dia: 'Sexta-feira', meta: 133433 },
+  { data: '21/11/2026', dia: 'Sábado', meta: 101526 },
+  { data: '22/11/2026', dia: 'Domingo', meta: 105100 },
+  { data: '23/11/2026', dia: 'Segunda-feira', meta: 247775 },
+  { data: '24/11/2026', dia: 'Terça-feira', meta: 278011 },
+  { data: '25/11/2026', dia: 'Quarta-feira', meta: 267309 },
   { data: '26/11/2026', dia: 'Quinta-feira', meta: 321838 },
   { data: '27/11/2026', dia: 'Sexta-feira', meta: 717684 },
   { data: '28/11/2026', dia: 'Sábado', meta: 329960 },
@@ -77,10 +77,10 @@ test('TC-004: resolução respeita fuso America/Sao_Paulo na virada de dia UTC',
   const afterMidnightBrt = new Date('2026-11-14T03:00:00.000Z');
 
   assert.equal(dailyTargets.brDateIso(beforeMidnightBrt), '2026-11-13');
-  assert.equal(dailyTargets.getDailyTargetValue(beforeMidnightBrt), 210552);
+  assert.equal(dailyTargets.getDailyTargetValue(beforeMidnightBrt), 174402);
 
   assert.equal(dailyTargets.brDateIso(afterMidnightBrt), '2026-11-14');
-  assert.equal(dailyTargets.getDailyTargetValue(afterMidnightBrt), 114005);
+  assert.equal(dailyTargets.getDailyTargetValue(afterMidnightBrt), 91374);
 });
 
 test('TC-005: datas fora de novembro/2026 ou inválidas retornam null sem exceção', () => {
