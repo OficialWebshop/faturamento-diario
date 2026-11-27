@@ -6,6 +6,13 @@ const { brDateIso, getDailyTargetValue } = require('./site/dist/daily-targets.js
 const { goalState, dayComparison, retainDayClosings } = require('./site/dist/dashboard-data.js');
 const { financialSale, summarize: summarizeFinancial, projectSnapshot: financialSnapshot } = require('./site/dist/financial-report.js');
 const {
+  isGoalRevealActive,
+  createEmptyGoalRevealState,
+  recordPreGoalSnapshots,
+  resolveGoalReveal,
+  canTriggerGoalReveal
+} = require('./site/dist/goal-reveal.js');
+const {
   buildAccounts,
   num,
   cancelled,
@@ -45,6 +52,8 @@ let snapshotStore;
 const snapshotStoreReady = openSnapshotStore(SQLITE_FILE, SNAPSHOTS).then(store => { snapshotStore = store; });
 const DETAIL_CACHE = process.env.DETAIL_CACHE_FILE || path.join(ROOT, 'data', 'tiny-order-cache.json');
 const DAILY_STATE_FILE = process.env.DAILY_STATE_FILE || path.join(path.dirname(SNAPSHOTS), 'daily-orders-state.json');
+const GOAL_REVEAL_STATE_FILE = process.env.GOAL_REVEAL_STATE_FILE || path.join(path.dirname(SNAPSHOTS), 'goal-reveal-state.json');
+let previewGoalRevealState = null;
 const PORT = Number(process.env.PORT || 8787);
 const TZ = 'America/Sao_Paulo';
 const PESQUISA_ENDPOINT = process.env.TINY_PESQUISA_ENDPOINT || 'https://api.tiny.com.br/api2/pedidos.pesquisa.php';
@@ -99,6 +108,45 @@ function readDailyState(today = brDate()) {
 
 function writeDailyState(state) {
   writeJson(DAILY_STATE_FILE, state);
+}
+
+function readGoalRevealState(dataDate = brDate()) {
+  if (process.env.READ_ONLY_PREVIEW === '1' && previewGoalRevealState?.dataDate === dataDate) {
+    return previewGoalRevealState;
+  }
+  const raw = readJson(GOAL_REVEAL_STATE_FILE, null);
+  if (!raw || typeof raw !== 'object' || raw.dataDate !== dataDate) {
+    return createEmptyGoalRevealState(dataDate);
+  }
+  return {
+    dataDate,
+    revealed: Boolean(raw.revealed),
+    revealedAt: raw.revealedAt || null,
+    preGoalSnapshots: Array.isArray(raw.preGoalSnapshots) ? raw.preGoalSnapshots : []
+  };
+}
+
+function writeGoalRevealState(state) {
+  if (process.env.READ_ONLY_PREVIEW === '1') {
+    previewGoalRevealState = state;
+    return;
+  }
+  writeJson(GOAL_REVEAL_STATE_FILE, state);
+}
+
+function persistPreGoalSnapshotsIfNeeded(daySnapshots, dataDate = brDate()) {
+  const today = brDate();
+  const target = getDailyTargetValue(dataDate);
+  if (!isGoalRevealActive(dataDate, today) || !(Number(target) > 0)) return;
+  const recorded = recordPreGoalSnapshots(daySnapshots, {
+    dataDate,
+    todayDate: today,
+    target,
+    state: readGoalRevealState(dataDate)
+  });
+  if (recorded.stateChanged && recorded.nextState) {
+    writeGoalRevealState(recorded.nextState);
+  }
 }
 
 function resolveSyncMode(requestedMode, dailyState, nowMs = Date.now(), today = brDate()) {
@@ -618,6 +666,25 @@ function mergeCurrentOrder(summary, detail) {
   return order;
 }
 
+function buildResponsePayload(all, requestedDate = brDate()) {
+  const today = brDate();
+  const target = getDailyTargetValue(requestedDate);
+  const resolved = resolveGoalReveal(all, {
+    requestedDate,
+    todayDate: today,
+    target,
+    state: readGoalRevealState(requestedDate),
+    summarizeFinancial
+  });
+  if (resolved.stateChanged && resolved.nextState) {
+    writeGoalRevealState(resolved.nextState);
+  }
+  return {
+    ...buildPayload(resolved.snapshotsForPayload, true, requestedDate),
+    goalReveal: resolved.goalReveal
+  };
+}
+
 async function enrichAccount(account, cache, summaries, { forceRefresh = false, requireFresh = false, run = activeRun } = {}) {
   const qAcc = getAccountQueueEntry(account.empresa);
   const pending = summaries.filter(summary => forceRefresh || !hasUsableCache(account, cache[`${account.empresa}:${summary.id}`]));
@@ -1022,6 +1089,7 @@ async function updateData({ mode: requestedMode = 'auto' } = {}) {
       if (!saved.financial && Array.isArray(saved.analytics)) saved.financial = summarizeFinancial(saved.analytics);
     }
     let snapshots = savedSnapshots.filter(s => s.dataDate === currentDay);
+    persistPreGoalSnapshotsIfNeeded(snapshots, currentDay);
     const snapshot = { at: now, dataDate: currentDay, slot, ...totals };
     snapshot.goalReached = goalState([...snapshots, snapshot], getDailyTargetValue(currentDay), currentDay);
     snapshot.financial = summarizeFinancial(totals.analytics);
@@ -1037,6 +1105,7 @@ async function updateData({ mode: requestedMode = 'auto' } = {}) {
     const storedSnapshots = retainDayClosings(readJson(SNAPSHOTS, []), currentDay, snapshots);
     snapshotStore.save(snapshots);
     writeJson(SNAPSHOTS, storedSnapshots);
+    persistPreGoalSnapshotsIfNeeded(snapshots, currentDay);
 
     cycleCompletedByEmpresa.clear();
     activeCycleMode = null;
@@ -1049,7 +1118,7 @@ async function updateData({ mode: requestedMode = 'auto' } = {}) {
     syncQueue.currentTask = null;
     syncQueue.updatedAt = now;
     reconciliationState = { status: 'ok', pending: 0, message: 'Carga reconciliada sem pendências' };
-    return buildPayload(storedSnapshots);
+    return buildResponsePayload(storedSnapshots, currentDay);
   })();
 
   try {
@@ -1372,9 +1441,44 @@ const server = http.createServer(async (req, res) => {
     }
   }
 
+  if (url.pathname === '/api/goal-reveal' && req.method === 'POST') {
+    const body = await readRequestBody(req);
+    const targetDate = url.searchParams.get('date') || body.date || brDate();
+    if (!validDate(targetDate)) {
+      return json(res, 400, { error: 'Data inválida. Use AAAA-MM-DD.' });
+    }
+    const today = brDate();
+    if (!isGoalRevealActive(targetDate, today)) {
+      return json(res, 409, { error: 'A liberação da meta batida está disponível somente hoje (27/11/2026).' });
+    }
+    const all = snapshotStore.readForDate(targetDate);
+    const target = getDailyTargetValue(targetDate);
+    const check = canTriggerGoalReveal(all, { requestedDate: targetDate, todayDate: today, target });
+    const currentState = readGoalRevealState(targetDate);
+    if (!currentState.revealed && !check.goalReached) {
+      return json(res, 409, { error: 'A meta diária ainda não foi atingida.' });
+    }
+    if (!currentState.revealed) {
+      writeGoalRevealState({
+        ...currentState,
+        dataDate: targetDate,
+        revealed: true,
+        revealedAt: new Date().toISOString()
+      });
+    }
+    return json(res, 200, {
+      ok: true,
+      ...buildResponsePayload(all, targetDate),
+      historicalReconciliation: historicalRefreshes.get(targetDate) || null,
+      updating: Boolean(updating),
+      reconciliation: reconciliationState,
+      queue: getQueueSnapshot()
+    });
+  }
+
   if (url.pathname === '/api/data') {
     return json(res, 200, {
-      ...buildPayload(snapshotStore.readForDate(requestedDate), true, requestedDate),
+      ...buildResponsePayload(snapshotStore.readForDate(requestedDate), requestedDate),
       historicalReconciliation: historicalRefreshes.get(requestedDate) || null,
       updating: Boolean(updating),
       reconciliation: reconciliationState,

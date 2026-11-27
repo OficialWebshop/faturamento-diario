@@ -12,6 +12,7 @@ let currentChannels={};
 let previousChannels={};
 let comparisons={},dailyTarget=0,selectedDate='',todayDate='';
 let dailyGoalReached={};
+let goalRevealState=null,revealingGoal=false;
 let activeReport='executive',executiveReport=null,financialReport=null;
 let analyticData=[];
 let management=[],streamingStatus={},operational={};
@@ -77,7 +78,7 @@ function renderOperational(){const alert=document.querySelector('#smartAlert'),a
 function applyScope(scope='Consolidado'){const view=perspectiveViews.find(item=>item.scope===scope);if(!view)return;if(activeScope!==scope){selectedChartHour=null;const detail=document.querySelector('#hourDetails');if(detail?.open)detail.close();}activeScope=scope;document.querySelector('#scopeTitle').textContent=scope.toUpperCase();document.querySelectorAll('.scope-button').forEach(button=>{button.classList.toggle('active',button.dataset.scope===scope);button.setAttribute('aria-pressed',String(button.dataset.scope===scope))});data=view.series||[];previousDaySeries=view.previousDaySeries||[];currentChannels=view.currentChannels||{};previousChannels=view.previousChannels||{};const managementName=scope==='Full'?'Full Oficial':scope,summary=management.find(item=>item.grupo===managementName)||{gmv:0,pedidos:0,ticket:0},activeHour=Number(baseLiveMetrics.activeHour||0),hourGmv=view.hourlyUnavailable?0:data.reduce((sum,row)=>sum+Number(row.hours[activeHour]?.value||0),0),firstScopeLoad=!Object.values(previousChannels).some(Number);liveMetrics={...baseLiveMetrics,totalGmv:summary.gmv,totalOrders:summary.pedidos,ticket:summary.ticket,hourGmv,hourOrders:firstScopeLoad?summary.pedidos:baseLiveMetrics.hourOrders,hourIsReconciled:Boolean(baseLiveMetrics.hourIsReconciled||firstScopeLoad)};document.querySelector('#channelFilter').innerHTML='<option value="all">Todos os canais</option>'+data.map(d=>`<option>${d.channel}</option>`).join('');activeChannel='all';render()}
 function renderAnalytics(){const q=document.querySelector('#analyticSearch').value.trim().toLowerCase(),company=document.querySelector('#analyticCompany').value,canal=document.querySelector('#analyticChannel').value,filtered=analyticData.filter(x=>(company==='all'||x.empresa===company)&&(canal==='all'||x.canal===canal)&&(!q||[x.pedido,x.empresa,x.canal,x.modalidade,x.marcadores,x.ecommerce,x.situacao].some(v=>String(v).toLowerCase().includes(q))));document.querySelector('#analyticOrders').textContent=new Intl.NumberFormat('pt-BR').format(analyticData.length);document.querySelector('#analyticGmv').textContent=money(analyticData.filter(x=>x.contabilizado).reduce((s,x)=>s+(+x.valor||0),0));document.querySelector('#analyticComplete').textContent=(analyticData.length?analyticData.filter(x=>x.detalhe==='Completo').length/analyticData.length*100:0).toFixed(0)+'%';const page=pageRows(filtered,'analytic');document.querySelector('#analyticsRows').innerHTML=filtered.length?page.rows.map(x=>`<tr><td><b>${x.pedido}</b></td><td>${x.empresa}</td><td><span class="channel-pill ${x.canal==='A identificar'?'warning':''}">${x.canal}</span></td><td><span class="mode-pill ${x.modalidade!=='Convencional'?'full':''}" title="${x.marcadores||''}">${x.modalidade||'Convencional'}</span></td><td>${x.ecommerce}</td><td>${x.situacao}</td><td class="${x.detalhe==='Completo'?'detail-complete':'detail-pending'}">${x.detalhe}</td><td>${fullMoney(x.valor)}</td></tr>`).join(''):'<tr><td colspan="8" class="empty-table">Nenhum pedido encontrado com os filtros selecionados.</td></tr>'}
 function setupAnalytics(payload){analyticData=payload.analytics||[];management=payload.management||[];streamingStatus=payload.streaming||{};operational=payload.operational||{};const options=[...new Set(analyticData.map(x=>x.canal))].sort(),companies=[...new Set(['Oficial','Prioriza','OFICIALSP','OFICIALSP2',...(payload.accounts||[]).map(x=>x.empresa),...analyticData.map(x=>x.empresa)])].filter(Boolean).sort(),unidentified=payload.diagnostics?.unidentified||[],alert=document.querySelector('#dataQualityAlert');alert.hidden=!unidentified.length;alert.innerHTML=unidentified.length?`<strong>ATENÇÃO DE QUALIDADE</strong><span>${unidentified.length} pedido(s) ainda sem canal identificado. Eles permanecem visíveis para conciliação e não são ocultados.</span>`:'';const savedCompany=document.querySelector('#analyticCompany').value,savedChannel=document.querySelector('#analyticChannel').value;document.querySelector('#analyticChannel').innerHTML='<option value="all">Todos os canais</option>'+options.map(x=>`<option>${x}</option>`).join('');document.querySelector('#analyticCompany').innerHTML='<option value="all">Todas as empresas</option>'+companies.map(x=>`<option>${x}</option>`).join('');document.querySelector('#analyticCompany').value=companies.includes(savedCompany)?savedCompany:'all';document.querySelector('#analyticChannel').value=options.includes(savedChannel)?savedChannel:'all';renderManagement();renderOperational();renderAnalytics()}
-async function loadBigQuery(update=false){const endpoint=update?'/api/update-data':`/api/data?date=${encodeURIComponent(selectedDate||'')}`;try{const response=await fetch(endpoint,{cache:'no-store'});if(!response.ok)throw new Error((await response.json()).error||'Falha na atualização');const raw=await response.json(),payload=DASHBOARD_DATA.normalize(raw),reconciliation=payload.reconciliation||{},retrying=reconciliation.status==='retrying';todayDate=payload.today||new Intl.DateTimeFormat('en-CA',{timeZone:'America/Sao_Paulo',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());selectedDate=payload.dataDate||selectedDate||todayDate;const picker=document.querySelector('#dashboardDate');picker.value=selectedDate;picker.max=todayDate;document.body.classList.toggle('historical-mode',Boolean(payload.isHistorical));comparisons=payload.comparisons||{};executiveReport=payload;financialReport=DASHBOARD_DATA.normalize(FINANCIAL_REPORT.fromPayload(raw));dailyTarget=Number(payload.target||0);dailyGoalReached=payload.goalReachedAt||DASHBOARD_DATA.goalState(payload.snapshotHistory||[],dailyTarget,selectedDate).reachedAt;isUpdating=Boolean(payload.updating)||reconciliation.status==='updating';document.querySelector('#updateStatus').classList.toggle('syncing',isUpdating||retrying);document.querySelector('#cancelRefreshBtn')?.classList.toggle('active',isUpdating||retrying);document.querySelector('#statusLabel').textContent=payload.isHistorical?'FECHAMENTO HISTÓRICO':retrying?`RECONCILIANDO ${reconciliation.pending||''} PEDIDOS`:isUpdating?'ATUALIZANDO EVENTOS':'ÚLTIMA ATUALIZAÇÃO';setupAnalytics(payload);snapshotHistory=payload.snapshotHistory||[];perspectiveViews=payload.views||[];baseLiveMetrics=payload.metrics||{};liveMetrics={...baseLiveMetrics};if(selectedDate===todayDate){const key='bf-chart-baseline-v3-'+selectedDate;try{chartBaseline=JSON.parse(localStorage.getItem(key)||'null')}catch{chartBaseline=null}if(!chartBaseline){const hour=Number(baseLiveMetrics.activeHour||new Date().getHours()),scopes={};for(const view of perspectiveViews)scopes[view.scope]={...(view.currentChannels||{})};chartBaseline={hour,createdAt:payload.updatedAt,scopes};localStorage.setItem(key,JSON.stringify(chartBaseline))}}else chartBaseline=null;applyReportPayload();if(payload.updatedAt)document.querySelector('#lastUpdate').textContent=new Intl.DateTimeFormat('pt-BR',{timeZone:'America/Sao_Paulo',day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit'}).format(new Date(payload.updatedAt));if(update&&payload.waitingForLoad)toast('A primeira carga de hoje ainda não saiu');return true}catch(error){if(update)toast('Tiny: '+error.message);return false}}
+async function loadBigQuery(update=false){const endpoint=update?'/api/update-data':`/api/data?date=${encodeURIComponent(selectedDate||'')}`;try{const response=await fetch(endpoint,{cache:'no-store'});if(!response.ok)throw new Error((await response.json()).error||'Falha na atualização');const raw=await response.json();applyLoadedPayload(raw,update);return true}catch(error){if(update)toast('Tiny: '+error.message);return false}}
 async function waitHistoricalReconciliation(date,isCurrent=()=>true){
   while(true){
     await new Promise(resolve=>setTimeout(resolve,2000));
@@ -171,7 +172,7 @@ async function cancelAndRefreshDashboard(){
 }
 document.querySelector('#refreshBtn').addEventListener('click',refreshDashboard);
 document.querySelector('#cancelRefreshBtn')?.addEventListener('click',cancelAndRefreshDashboard);
-document.querySelector('#dashboardDate').addEventListener('change',async e=>{selectedDate=e.target.value;await loadBigQuery(false)});
+document.querySelector('#dashboardDate').addEventListener('change',async e=>{selectedDate=e.target.value;goalRevealState=null;updateGoalRevealControl();await loadBigQuery(false)});
 document.querySelector('#channelFilter').innerHTML+=[...channels].map(c=>`<option>${c.name}</option>`).join('');document.querySelector('#channelFilter').addEventListener('change',e=>{activeChannel=e.target.value==='all'?'all':e.target.value;renderChart()});
 document.querySelectorAll('.view-tab').forEach(button=>button.addEventListener('click',()=>{document.querySelectorAll('.view-tab,.report-view').forEach(x=>x.classList.remove('active'));button.classList.add('active');document.querySelector('#'+button.dataset.view).classList.add('active');if(button.dataset.view==='dashboardView')setReport(button.dataset.report||'executive')}));document.querySelector('#analyticSearch').addEventListener('input',renderAnalytics);document.querySelector('#analyticCompany').addEventListener('change',renderAnalytics);document.querySelector('#analyticChannel').addEventListener('change',renderAnalytics);
 document.querySelector('#fileInput').addEventListener('change',async e=>{const file=e.target.files[0];if(!file)return;try{const text=await file.text(),lines=text.trim().split(/\r?\n/),sep=lines[0].includes(';')?';':',',head=lines.shift().split(sep).map(x=>x.trim().toLowerCase()),ci=head.findIndex(x=>['canal','channel'].includes(x)),hi=head.findIndex(x=>['hora','hour'].includes(x)),vi=head.findIndex(x=>['gmv','valor','value'].includes(x));if([ci,hi,vi].some(x=>x<0))throw Error();const map={};lines.forEach(l=>{const p=l.split(sep),name=p[ci].trim(),hour=p[hi].trim(),value=Number(p[vi].replace(/[^0-9,.-]/g,'').replace('.','').replace(',','.'));if(!map[name])map[name]={};map[name][hour]= (map[name][hour]||0)+value});const newHours=[...new Set(lines.map(l=>l.split(sep)[hi].trim()))];hours.splice(0,hours.length,...newHours);data=Object.entries(map).map(([channel,obj])=>({channel,hours:newHours.map(hour=>({hour,value:obj[hour]||0}))}));activeChannel='all';document.querySelector('#channelFilter').innerHTML='<option value="all">Todos os canais</option>'+data.map(d=>`<option>${d.channel}</option>`).join('');render();stamp();toast(`${data.length} canais importados com sucesso`)}catch{toast('CSV inválido. Use as colunas: hora, canal, gmv')}});
@@ -249,3 +250,117 @@ function renderFinancialDifference(){
   element.textContent=difference===null?'Financeiro: sem base de comparação':'Financeiro vs. executivo: '+(difference>0?'+':'')+difference.toFixed(1)+'%';
   element.title='GMV financeiro: '+fullMoney(financial)+' • GMV executivo: '+fullMoney(total);
 }
+
+function applyLoadedPayload(raw,update=false){
+  const payload=DASHBOARD_DATA.normalize(raw),reconciliation=payload.reconciliation||{},retrying=reconciliation.status==='retrying';
+  todayDate=payload.today||new Intl.DateTimeFormat('en-CA',{timeZone:'America/Sao_Paulo',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
+  selectedDate=payload.dataDate||selectedDate||todayDate;
+  const picker=document.querySelector('#dashboardDate');
+  picker.value=selectedDate;picker.max=todayDate;
+  document.body.classList.toggle('historical-mode',Boolean(payload.isHistorical));
+  comparisons=payload.comparisons||{};
+  executiveReport=payload;
+  financialReport=DASHBOARD_DATA.normalize(FINANCIAL_REPORT.fromPayload(raw));
+  dailyTarget=Number(payload.target||0);
+  dailyGoalReached=payload.goalReachedAt||DASHBOARD_DATA.goalState(payload.snapshotHistory||[],dailyTarget,selectedDate).reachedAt;
+  goalRevealState=raw.goalReveal||null;
+  isUpdating=Boolean(payload.updating)||reconciliation.status==='updating';
+  document.querySelector('#updateStatus').classList.toggle('syncing',isUpdating||retrying);
+  document.querySelector('#cancelRefreshBtn')?.classList.toggle('active',isUpdating||retrying);
+  document.querySelector('#statusLabel').textContent=payload.isHistorical?'FECHAMENTO HISTÓRICO':retrying?`RECONCILIANDO ${reconciliation.pending||''} PEDIDOS`:isUpdating?'ATUALIZANDO EVENTOS':'ÚLTIMA ATUALIZAÇÃO';
+  setupAnalytics(payload);
+  snapshotHistory=payload.snapshotHistory||[];
+  perspectiveViews=payload.views||[];
+  baseLiveMetrics=payload.metrics||{};
+  liveMetrics={...baseLiveMetrics};
+  if(selectedDate===todayDate){
+    const key='bf-chart-baseline-v3-'+selectedDate;
+    try{chartBaseline=JSON.parse(localStorage.getItem(key)||'null')}catch{chartBaseline=null}
+    if(!chartBaseline){
+      const hour=Number(baseLiveMetrics.activeHour||new Date().getHours()),scopes={};
+      for(const view of perspectiveViews)scopes[view.scope]={...(view.currentChannels||{})};
+      chartBaseline={hour,createdAt:payload.updatedAt,scopes};
+      try{localStorage.setItem(key,JSON.stringify(chartBaseline))}catch{}
+    }
+  }else chartBaseline=null;
+  applyReportPayload();
+  updateGoalRevealControl();
+  if(payload.updatedAt)document.querySelector('#lastUpdate').textContent=new Intl.DateTimeFormat('pt-BR',{timeZone:'America/Sao_Paulo',day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit'}).format(new Date(payload.updatedAt));
+  if(update&&payload.waitingForLoad)toast('A primeira carga de hoje ainda não saiu');
+}
+
+function updateGoalRevealControl(){
+  const uploadBtn=document.querySelector('#uploadBaseBtn'),revealBtn=document.querySelector('#goalRevealBtn'),icon=document.querySelector('#goalRevealIcon'),label=document.querySelector('#goalRevealLabel');
+  if(!revealBtn)return;
+  const lockDate=(typeof GOAL_REVEAL!=='undefined'&&GOAL_REVEAL.GOAL_REVEAL_DATE)||'2026-11-27';
+  const brToday=todayDate||new Intl.DateTimeFormat('en-CA',{timeZone:'America/Sao_Paulo',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
+  const currentSelected=selectedDate||brToday;
+  const active=goalRevealState?Boolean(goalRevealState.enabled):(brToday===lockDate&&currentSelected===lockDate);
+  if(uploadBtn)uploadBtn.hidden=active;
+  revealBtn.hidden=!active;
+  if(!active){
+    revealBtn.disabled=true;
+    revealBtn.classList.remove('ready','revealed','loading');
+    return;
+  }
+  if(revealingGoal)return;
+  if(goalRevealState?.revealed){
+    revealBtn.disabled=true;
+    revealBtn.classList.remove('ready');
+    revealBtn.classList.add('revealed');
+    if(icon)icon.textContent='✓';
+    if(label)label.textContent='Meta batida!';
+    revealBtn.title='Meta diária de 27/11 já revelada no painel';
+    return;
+  }
+  if(goalRevealState?.canReveal){
+    revealBtn.disabled=false;
+    revealBtn.classList.remove('revealed');
+    revealBtn.classList.add('ready');
+    if(icon)icon.textContent='🏆';
+    if(label)label.textContent='Mostrar meta batida';
+    revealBtn.title='Meta diária atingida! Clique para atualizar e mostrar a meta batida';
+    return;
+  }
+  revealBtn.disabled=true;
+  revealBtn.classList.remove('ready','revealed');
+  if(icon)icon.textContent='🔒';
+  if(label)label.textContent='Aguardando meta';
+  revealBtn.title='Valores travados antes do atingimento até liberar a meta diária de 27/11';
+}
+
+async function revealDailyGoal(){
+  const btn=document.querySelector('#goalRevealBtn'),label=document.querySelector('#goalRevealLabel');
+  if(revealingGoal||!btn||btn.disabled||!goalRevealState?.canReveal)return;
+  revealingGoal=true;
+  btn.disabled=true;
+  btn.classList.add('loading');
+  if(label)label.textContent='Liberando meta...';
+  try{
+    const lockDate=(typeof GOAL_REVEAL!=='undefined'&&GOAL_REVEAL.GOAL_REVEAL_DATE)||'2026-11-27';
+    const date=selectedDate||todayDate||lockDate;
+    const response=await fetch('/api/goal-reveal',{method:'POST',headers:{'Content-Type':'application/json'},cache:'no-store',body:JSON.stringify({date})});
+    const raw=await response.json();
+    if(!response.ok)throw new Error(raw.error||'Não foi possível liberar a meta batida');
+    revealingGoal=false;
+    applyLoadedPayload(raw,false);
+    for(const selector of ['.metric.target','.metric.featured']){
+      const card=document.querySelector(selector);
+      if(card?.classList){
+        card.classList.remove('goal-revealed-pop');
+        card.classList.add('goal-revealed-pop');
+        setTimeout(()=>card.classList.remove('goal-revealed-pop'),1400);
+      }
+    }
+    toast('Meta diária batida revelada!');
+  }catch(error){
+    toast(error.message||'Não foi possível liberar a meta batida');
+  }finally{
+    revealingGoal=false;
+    btn.classList.remove('loading');
+    updateGoalRevealControl();
+  }
+}
+
+document.querySelector('#goalRevealBtn')?.addEventListener('click',revealDailyGoal);
+updateGoalRevealControl();

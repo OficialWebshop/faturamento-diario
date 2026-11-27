@@ -33,7 +33,8 @@
       <div class="official-mark"><span>POWERED BY</span><img src="assets/oficial-logo.png" alt="Oficial Webshop"></div>
       <div class="actions">
         <label class="date-filter"><small>DATA DO PAINEL</small><input id="dashboardDate" type="date" value="2026-11-11"></label>
-        <label class="upload" title="Importar CSV"><input id="fileInput" type="file" accept=".csv,text/csv"/><span>↑</span> Importar base</label>
+        <label id="uploadBaseBtn" class="upload" title="Importar CSV"><input id="fileInput" type="file" accept=".csv,text/csv"/><span>↑</span> Importar base</label>
+        <button id="goalRevealBtn" type="button" class="goal-reveal-btn" disabled hidden title="Disponível quando o faturamento atingir a meta diária de 27/11"><span id="goalRevealIcon" class="goal-reveal-icon">🔒</span><span id="goalRevealLabel">Aguardando meta</span></button>
         <div class="refresh-control"><div class="refresh-buttons"><button id="refreshBtn"><span class="refresh-icon">↻</span> Atualizar dados</button><button id="cancelRefreshBtn" type="button" class="cancel-refresh-btn" title="Cancelar eventos de atualização em andamento e forçar nova atualização">✕ Cancelar e atualizar</button></div><div id="refreshProgress" class="refresh-progress" hidden><progress id="refreshProgressBar" max="100" value="0" aria-label="Progresso da atualização"></progress><small id="refreshProgressLabel" role="status" aria-live="polite"></small></div></div>
         <div class="status" id="updateStatus"><i></i><div><small id="statusLabel">ÚLTIMA ATUALIZAÇÃO</small><strong id="lastUpdate">—</strong></div></div>
       </div>
@@ -90,6 +91,7 @@
   <dialog id="hourDetails" aria-labelledby="hourDetailsTitle"><div class="hour-details-head"><h2 id="hourDetailsTitle"></h2><button id="hourDetailsClose" aria-label="Fechar valores por hora">Fechar</button></div><div id="hourDetailsValues"></div></dialog>
   <script src="financial-report.js"></script>
   <script src="dashboard-data.js"></script>
+  <script src="goal-reveal.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

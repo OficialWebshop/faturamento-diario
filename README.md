@@ -47,6 +47,15 @@ As metas diárias de GMV da operação para novembro de 2026 (`01/11/2026` a `30
 - O painel (`site/dist/app.js`) consome `target` da API e usa o mesmo módulo compartilhado no carregamento inicial ou na importação manual de CSV.
 - Datas sem meta cadastrada retornam `null` e exibem o estado `Sem meta` no card **ATINGIMENTO DA META**.
 
+### Travamento e liberação da meta batida (exclusivo para 27/11/2026)
+
+Exclusivamente em `27/11/2026` (quando a data atual e a data exibida no painel são `2026-11-27`), o botão **Importar base** no topo da página é substituído pelo botão de liberação da meta (`#goalRevealBtn`):
+
+- **Antes de atingir a meta (`GMV < R$ 717.684`):** o painel atualiza normalmente e salva o último estado pré-meta em `data/goal-reveal-state.json` (ignorado pelo Git), mantendo o botão travado (`Aguardando meta`).
+- **Ao atingir a meta (`GMV >= R$ 717.684`):** o backend continua sincronizando e salvando os dados reais no SQLite, mas mantém os valores exibidos travados no último snapshot anterior ao atingimento (`goalReveal.locked = true`) e libera o botão no topo (`Mostrar meta batida`).
+- **Ao clicar em `Mostrar meta batida`:** envia `POST /api/goal-reveal`, libera imediatamente os valores reais com a meta batida no painel e persiste o estado liberado para o restante do dia.
+- **Em qualquer outra data (históricas ou a partir de `28/11/2026`):** o travamento é desativado automaticamente e o botão **Importar base** volta ao topo da página.
+
 ## Testes
 
 Com Node.js 20+ instalado:
