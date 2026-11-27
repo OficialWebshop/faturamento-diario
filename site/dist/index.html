@@ -34,7 +34,7 @@
       <div class="actions">
         <label class="date-filter"><small>DATA DO PAINEL</small><input id="dashboardDate" type="date" value="2026-11-11"></label>
         <label class="upload" title="Importar CSV"><input id="fileInput" type="file" accept=".csv,text/csv"/><span>↑</span> Importar base</label>
-        <div class="refresh-control"><button id="refreshBtn"><span class="refresh-icon">↻</span> Atualizar dados</button><div id="refreshProgress" class="refresh-progress" hidden><progress id="refreshProgressBar" max="100" value="0" aria-label="Progresso da atualização"></progress><small id="refreshProgressLabel" role="status" aria-live="polite"></small></div></div>
+        <div class="refresh-control"><div class="refresh-buttons"><button id="refreshBtn"><span class="refresh-icon">↻</span> Atualizar dados</button><button id="cancelRefreshBtn" type="button" class="cancel-refresh-btn" title="Cancelar eventos de atualização em andamento e forçar nova atualização">✕ Cancelar e atualizar</button></div><div id="refreshProgress" class="refresh-progress" hidden><progress id="refreshProgressBar" max="100" value="0" aria-label="Progresso da atualização"></progress><small id="refreshProgressLabel" role="status" aria-live="polite"></small></div></div>
         <div class="status" id="updateStatus"><i></i><div><small id="statusLabel">ÚLTIMA ATUALIZAÇÃO</small><strong id="lastUpdate">—</strong></div></div>
       </div>
     </header>

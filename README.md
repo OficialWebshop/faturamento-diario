@@ -33,9 +33,10 @@ Para evitar sobrecarga na API Tiny e garantir atualização em tempo real:
 Em caso de falha nas consultas à API Tiny (`pedidos.pesquisa.php` ou `pedido.obter.php`), o servidor aplica **retry exponencial** automático (base padrão `5s`, fator `2x`, teto `5 min`, até `6` tentativas, configuráveis por `TINY_RETRY_BASE_MS`, `TINY_RETRY_MAX_MS` e `TINY_RETRY_MAX_ATTEMPTS`):
 
 - `GET /api/queue`: retorna o estado atual da fila (`status`, `mode`, `paused`, `attempt`, `backoffMs`, `nextRetryAt`, `lastError`, `lastIncrementalAt`, `lastFullReconcileAt` e progresso/watermark por empresa).
-- `POST /api/queue/pause`: pausa a fila atual, cancela timers de retry pendentes e suspende disparos automáticos até retomada.
+- `POST /api/queue/pause`: pausa a fila atual, aborta requisições em andamento, cancela timers de retry pendentes e suspende disparos automáticos até retomada.
 - `POST /api/queue/resume`: retoma a fila pausada e reinicia a sincronização a partir do último `watermark` bem-sucedido de cada conta.
-- Na interface do painel, o botão **Fila** na barra superior exibe o estado em tempo real e permite inspecionar, forçar reconciliação completa e pausar/retomar a fila.
+- `POST /api/queue/cancel`: cancela imediatamente eventos de atualização em andamento (abortando chamadas HTTP ao Tiny, delays, timers de retry, jobs históricos pendentes e estado parcial do ciclo) e, quando enviado com `forceRefresh: true`, força imediatamente uma nova atualização (`mode: 'auto'` por padrão — incremental via `dataAtualizacao` para hoje e reconciliação completa para datas históricas).
+- Na interface do painel, o botão **✕ Cancelar e atualizar** na barra superior aciona `POST /api/queue/cancel` com `forceRefresh: true` e `mode: 'auto'` para interromper qualquer evento travado (`ATUALIZANDO EVENTOS`) e iniciar imediatamente uma nova atualização da data selecionada.
 
 ## Meta diária
 

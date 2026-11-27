@@ -118,8 +118,11 @@ function resolveSyncMode(requestedMode, dailyState, nowMs = Date.now(), today = 
 
 let updating = null;
 let updatingDate = null;
+let activeRun = null;
+let cancelGeneration = 0;
 const historicalRefreshes = new Map();
 let recoveryTimer = null;
+let scheduleTimer = null;
 let cancelActiveDelay = null;
 let reconciliationState = { status: 'ok', pending: 0, message: '' };
 let cycleDate = null;
@@ -212,29 +215,95 @@ function computeBackoffMs(attempt) {
   return Math.min(RETRY_MAX_MS, RETRY_BASE_MS * (2 ** exp));
 }
 
-function ensureNotPaused() {
-  if (!syncQueue.paused) return;
-  const error = new Error(syncQueue.pausedReason || 'Fila de consultas pausada pelo usuário');
+function createPausedError(reason = syncQueue.pausedReason || 'Fila de consultas pausada pelo usuário') {
+  const error = new Error(reason);
   error.code = 'QUEUE_PAUSED';
   error.retryable = false;
-  throw error;
+  return error;
 }
 
-function interruptibleDelay(ms) {
+function createCancelledError(reason = 'Atualização cancelada pelo usuário') {
+  const error = new Error(reason);
+  error.code = 'UPDATE_CANCELLED';
+  error.retryable = false;
+  return error;
+}
+
+function createRunContext(date) {
+  return {
+    id: Symbol('sync-run'),
+    date,
+    cancelled: false,
+    cancelReason: null,
+    controller: new AbortController()
+  };
+}
+
+function ensureRunActive(run = activeRun) {
+  if (run?.cancelled) {
+    throw createCancelledError(run.cancelReason || 'Atualização cancelada pelo usuário');
+  }
+  if (syncQueue.paused) {
+    throw createPausedError();
+  }
+}
+
+function ensureNotPaused() {
+  ensureRunActive(activeRun);
+}
+
+function combineAbortSignals(timeoutMs, signal) {
+  const timeoutSignal = AbortSignal.timeout(timeoutMs);
+  if (!signal) return timeoutSignal;
+  if (typeof AbortSignal.any === 'function') {
+    return AbortSignal.any([timeoutSignal, signal]);
+  }
+  const controller = new AbortController();
+  const forward = src => {
+    if (!controller.signal.aborted) controller.abort(src.reason);
+  };
+  if (signal.aborted) {
+    controller.abort(signal.reason);
+    return controller.signal;
+  }
+  if (timeoutSignal.aborted) {
+    controller.abort(timeoutSignal.reason);
+    return controller.signal;
+  }
+  signal.addEventListener('abort', () => forward(signal), { once: true });
+  timeoutSignal.addEventListener('abort', () => forward(timeoutSignal), { once: true });
+  return controller.signal;
+}
+
+function interruptibleDelay(ms, run = activeRun) {
+  ensureRunActive(run);
   if (ms <= 0) return Promise.resolve();
   return new Promise((resolve, reject) => {
+    const signal = run?.controller?.signal;
+    const onAbort = () => {
+      clearTimeout(timer);
+      if (cancelActiveDelay === abortHandler) cancelActiveDelay = null;
+      try { ensureRunActive(run); } catch (err) { reject(err); return; }
+      reject(createCancelledError());
+    };
+    const abortHandler = () => {
+      signal?.removeEventListener('abort', onAbort);
+      onAbort();
+    };
     const timer = setTimeout(() => {
-      cancelActiveDelay = null;
-      if (syncQueue.paused) {
-        try { ensureNotPaused(); } catch (err) { reject(err); return; }
-      }
+      signal?.removeEventListener('abort', onAbort);
+      if (cancelActiveDelay === abortHandler) cancelActiveDelay = null;
+      try { ensureRunActive(run); } catch (err) { reject(err); return; }
       resolve();
     }, ms);
-    cancelActiveDelay = () => {
-      clearTimeout(timer);
-      cancelActiveDelay = null;
-      try { ensureNotPaused(); } catch (err) { reject(err); }
-    };
+    cancelActiveDelay = abortHandler;
+    if (signal) {
+      if (signal.aborted) {
+        abortHandler();
+        return;
+      }
+      signal.addEventListener('abort', onAbort, { once: true });
+    }
   });
 }
 
@@ -261,8 +330,95 @@ function pauseQueue(reason = 'Fila pausada pelo usuário') {
     pending: getTotalPending(),
     message: syncQueue.pausedReason
   };
+  if (activeRun && !activeRun.controller.signal.aborted) {
+    activeRun.controller.abort(createPausedError(syncQueue.pausedReason));
+  }
   if (cancelActiveDelay) cancelActiveDelay();
   return getQueueSnapshot();
+}
+
+async function cancelUpdateEvents({ reason = 'Eventos de atualização cancelados pelo usuário' } = {}) {
+  const cleanReason = String(reason || 'Eventos de atualização cancelados pelo usuário').trim() || 'Eventos de atualização cancelados pelo usuário';
+  cancelGeneration += 1;
+  const myCancelGeneration = cancelGeneration;
+
+  const hadActiveUpdate = Boolean(updating);
+  const hadPendingRetry = Boolean(recoveryTimer);
+  const wasPaused = Boolean(syncQueue.paused);
+
+  if (recoveryTimer) {
+    clearTimeout(recoveryTimer);
+    recoveryTimer = null;
+  }
+  if (scheduleTimer) {
+    clearTimeout(scheduleTimer);
+    scheduleTimer = null;
+  }
+
+  let cancelledHistoricalJobs = 0;
+  for (const job of historicalRefreshes.values()) {
+    if (job?.status === 'pending') {
+      job.status = 'failed';
+      job.cancelled = true;
+      job.error = cleanReason;
+      cancelledHistoricalJobs += 1;
+    }
+  }
+
+  const previousRun = activeRun;
+  const previousUpdating = updating;
+  if (previousRun) {
+    previousRun.cancelled = true;
+    previousRun.cancelReason = cleanReason;
+    if (!previousRun.controller.signal.aborted) {
+      previousRun.controller.abort(createCancelledError(cleanReason));
+    }
+  }
+  if (cancelActiveDelay) cancelActiveDelay();
+
+  if (previousUpdating) {
+    try { await previousUpdating; } catch {}
+  }
+
+  cycleCompletedByEmpresa.clear();
+  activeCycleMode = null;
+  syncQueue.paused = false;
+  syncQueue.pausedAt = null;
+  syncQueue.pausedReason = null;
+  syncQueue.status = 'idle';
+  syncQueue.attempt = 0;
+  syncQueue.lastError = null;
+  syncQueue.backoffMs = null;
+  syncQueue.nextRetryAt = null;
+  syncQueue.currentTask = null;
+  syncQueue.updatedAt = new Date().toISOString();
+  for (const acc of syncQueue.accounts) {
+    acc.status = 'idle';
+    acc.foundOrders = 0;
+    acc.changedOrders = 0;
+    acc.pendingOrders = 0;
+    acc.processedOrders = 0;
+    acc.pendingOrderIds = [];
+    acc.lastError = null;
+  }
+  reconciliationState = {
+    status: 'ok',
+    pending: 0,
+    message: cleanReason
+  };
+
+  if (process.env.DISABLE_AUTO_UPDATE !== '1') {
+    schedule();
+  }
+
+  return {
+    cancelled: true,
+    cancelGeneration: myCancelGeneration,
+    hadActiveUpdate,
+    hadPendingRetry,
+    wasPaused,
+    cancelledHistoricalJobs
+  };
 }
 
 function resumeQueue({ triggerNow = true } = {}) {
@@ -300,29 +456,41 @@ function tinyError(root, context) {
   return new Error(`${context}: ${message}`);
 }
 
-async function tinyPost(endpoint, token, params = {}) {
-  ensureNotPaused();
-  const response = await fetch(endpoint, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({ token, formato: 'JSON', ...params }),
-    signal: AbortSignal.timeout(30000)
-  });
+async function tinyPost(endpoint, token, params = {}, run = activeRun) {
+  ensureRunActive(run);
+  const signal = combineAbortSignals(30000, run?.controller?.signal);
+  let response;
+  try {
+    response = await fetch(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ token, formato: 'JSON', ...params }),
+      signal
+    });
+  } catch (error) {
+    if (run?.cancelled) throw createCancelledError(run.cancelReason || 'Atualização cancelada pelo usuário');
+    if (syncQueue.paused) throw createPausedError();
+    throw error;
+  }
+  ensureRunActive(run);
   if (!response.ok) throw new Error(`Tiny HTTP ${response.status}`);
-  return response.json();
+  const data = await response.json();
+  ensureRunActive(run);
+  return data;
 }
 
 async function searchOrdersByQuery(account, extraParams = {}, options = {}) {
+  const run = options.run || activeRun;
   const isIncremental = options.mode === 'incremental' && Boolean(options.dataAtualizacao);
   const date = options.date || apiDate();
   const found = [];
   let page = 1, pages = 1;
   do {
-    ensureNotPaused();
+    ensureRunActive(run);
     const queryParams = isIncremental
       ? { dataAtualizacao: String(options.dataAtualizacao), pagina: String(page), ...extraParams }
       : { dataInicial: date, dataFinal: date, pagina: String(page), ...extraParams };
-    const json = await tinyPost(PESQUISA_ENDPOINT, account.token, queryParams);
+    const json = await tinyPost(PESQUISA_ENDPOINT, account.token, queryParams, run);
     const root = json?.retorno || {}, error = tinyError(root, `${account.empresa} pesquisa`);
     if (error === 'EMPTY') return found;
     if (error) throw error;
@@ -334,7 +502,8 @@ async function searchOrdersByQuery(account, extraParams = {}, options = {}) {
 }
 
 async function searchOrders(account, options = {}) {
-  ensureNotPaused();
+  const run = options.run || activeRun;
+  ensureRunActive(run);
   if (!account.token) {
     const error = new Error(`Token Tiny não configurado para ${account.empresa}`);
     error.code = 'CONFIG_ERROR';
@@ -343,7 +512,7 @@ async function searchOrders(account, options = {}) {
   if (Array.isArray(account.requiredMarkers) && account.requiredMarkers.length > 0) {
     const byId = new Map();
     for (const marker of account.requiredMarkers) {
-      const orders = await searchOrdersByQuery(account, { marcador: marker }, options);
+      const orders = await searchOrdersByQuery(account, { marcador: marker }, { ...options, run });
       for (const order of orders) {
         const key = String(order.id || order.numero || '');
         if (key && !byId.has(key)) byId.set(key, order);
@@ -351,12 +520,12 @@ async function searchOrders(account, options = {}) {
     }
     return [...byId.values()];
   }
-  return searchOrdersByQuery(account, {}, options);
+  return searchOrdersByQuery(account, {}, { ...options, run });
 }
 
-async function getOrder(account, summary) {
-  ensureNotPaused();
-  const json = await tinyPost(OBTER_ENDPOINT, account.token, { id: String(summary.id) });
+async function getOrder(account, summary, run = activeRun) {
+  ensureRunActive(run);
+  const json = await tinyPost(OBTER_ENDPOINT, account.token, { id: String(summary.id) }, run);
   const root = json?.retorno || {}, error = tinyError(root, `${account.empresa} pedido ${summary.id}`);
   if (error === 'EMPTY') return { ...summary, _tinyDetail: false };
   if (error) throw error;
@@ -449,7 +618,7 @@ function mergeCurrentOrder(summary, detail) {
   return order;
 }
 
-async function enrichAccount(account, cache, summaries, { forceRefresh = false, requireFresh = false } = {}) {
+async function enrichAccount(account, cache, summaries, { forceRefresh = false, requireFresh = false, run = activeRun } = {}) {
   const qAcc = getAccountQueueEntry(account.empresa);
   const pending = summaries.filter(summary => forceRefresh || !hasUsableCache(account, cache[`${account.empresa}:${summary.id}`]));
   if (qAcc) {
@@ -470,7 +639,7 @@ async function enrichAccount(account, cache, summaries, { forceRefresh = false, 
   let cacheDirty = false;
   const refreshed = new Set();
   for (let i = 0; i < pending.length; i++) {
-    ensureNotPaused();
+    ensureRunActive(run);
     const summary = pending[i];
     syncQueue.currentTask = {
       empresa: account.empresa,
@@ -479,7 +648,7 @@ async function enrichAccount(account, cache, summaries, { forceRefresh = false, 
     };
     syncQueue.updatedAt = new Date().toISOString();
     try {
-      const detail = await getOrder(account, summary);
+      const detail = await getOrder(account, summary, run);
       if (hasFullDetail(detail)) {
         cache[`${account.empresa}:${summary.id}`] = detail;
         refreshed.add(String(summary.id));
@@ -492,18 +661,18 @@ async function enrichAccount(account, cache, summaries, { forceRefresh = false, 
         reconciliationState.pending = getTotalPending();
       }
       if (i < pending.length - 1) {
-        await interruptibleDelay(DETAIL_DELAY_MS);
+        await interruptibleDelay(DETAIL_DELAY_MS, run);
       }
     } catch (error) {
       if (cacheDirty) writeJson(DETAIL_CACHE, cache);
-      if (error.code === 'QUEUE_PAUSED') throw error;
+      if (error.code === 'QUEUE_PAUSED' || error.code === 'UPDATE_CANCELLED') throw error;
       if (!/Excedido o número de acessos/i.test(error.message)) throw error;
       break;
     }
   }
   if (cacheDirty) writeJson(DETAIL_CACHE, cache);
 
-  ensureNotPaused();
+  ensureRunActive(run);
   const unresolved = summaries.filter(summary => requireFresh
     ? !refreshed.has(String(summary.id))
     : (countableSale(summary) || financialSale(summary)) && !hasFullDetail(cache[`${account.empresa}:${summary.id}`]));
@@ -567,12 +736,17 @@ function aggregateDay(ordersByAccount, currentDay) {
 }
 
 async function reconcileHistoricalDate(dataDate) {
-  ensureNotPaused();
+  const myGeneration = cancelGeneration;
+  if (syncQueue.paused) throw createPausedError();
   if (updating) {
     if (updatingDate === dataDate) return updating;
-    try { await updating; } catch {}
+    const pendingPromise = updating;
+    try { await pendingPromise; } catch {}
+    if (cancelGeneration !== myGeneration) throw createCancelledError();
     return reconcileHistoricalDate(dataDate);
   }
+  const run = createRunContext(dataDate);
+  activeRun = run;
   updatingDate = dataDate;
   syncQueue.status = 'running';
   syncQueue.startedAt = new Date().toISOString();
@@ -588,14 +762,14 @@ async function reconcileHistoricalDate(dataDate) {
     const ordersByAccount = {};
     const date = dataDate.split('-').reverse().join('/');
     for (const account of accounts) {
-      ensureNotPaused();
-      const summaries = (await searchOrders(account, { mode: 'full', date }))
+      ensureRunActive(run);
+      const summaries = (await searchOrders(account, { mode: 'full', date, run }))
         .filter(order => isOrderFromDate(order, dataDate));
       // A historical reconciliation must refresh details even when a cached copy exists.
-      const items = await enrichAccount(account, cache, summaries, { forceRefresh: true, requireFresh: true });
+      const items = await enrichAccount(account, cache, summaries, { forceRefresh: true, requireFresh: true, run });
       ordersByAccount[account.empresa] = Object.fromEntries(items.map(item => [String(item.order.id || item.order.numero), item]));
     }
-    ensureNotPaused();
+    ensureRunActive(run);
     const saved = snapshotStore.readForDate(dataDate);
     const previous = saved.filter(snapshot => snapshot.dataDate === dataDate).at(-1);
     // Correct the saved closing without adding a capture to another day or changing earlier captures.
@@ -621,22 +795,33 @@ async function reconcileHistoricalDate(dataDate) {
   try {
     return await updating;
   } catch (error) {
-    syncQueue.status = syncQueue.paused ? 'paused' : 'failed';
-    syncQueue.lastError = error.message;
-    syncQueue.currentTask = null;
-    reconciliationState = { status: syncQueue.status, pending: Number(error.pending || 0), message: error.message };
+    if (activeRun === run) {
+      syncQueue.currentTask = null;
+      syncQueue.updatedAt = new Date().toISOString();
+      if (error.code !== 'UPDATE_CANCELLED' && !run.cancelled) {
+        syncQueue.status = syncQueue.paused ? 'paused' : 'failed';
+        syncQueue.lastError = error.message;
+        reconciliationState = { status: syncQueue.status, pending: Number(error.pending || 0), message: error.message };
+      }
+    }
     throw error;
   } finally {
-    updating = null;
-    updatingDate = null;
+    if (activeRun === run) {
+      updating = null;
+      updatingDate = null;
+      activeRun = null;
+    }
   }
 }
 
 async function updateData({ mode: requestedMode = 'auto' } = {}) {
-  ensureNotPaused();
+  const myGeneration = cancelGeneration;
+  if (syncQueue.paused) throw createPausedError();
   if (updating) {
     if (updatingDate === brDate()) return updating;
-    try { await updating; } catch {}
+    const pendingPromise = updating;
+    try { await pendingPromise; } catch {}
+    if (cancelGeneration !== myGeneration) throw createCancelledError();
     return updateData({ mode: requestedMode });
   }
 
@@ -685,6 +870,8 @@ async function updateData({ mode: requestedMode = 'auto' } = {}) {
       : 'Conferindo todos os pedidos do dia'
   };
 
+  const run = createRunContext(today);
+  activeRun = run;
   updatingDate = today;
   updating = (async () => {
     const cache = readDetailCache();
@@ -692,7 +879,7 @@ async function updateData({ mode: requestedMode = 'auto' } = {}) {
 
     try {
       for (const account of accounts) {
-        ensureNotPaused();
+        ensureRunActive(run);
         activeAccount = account;
         const qAcc = getAccountQueueEntry(account.empresa);
 
@@ -732,7 +919,8 @@ async function updateData({ mode: requestedMode = 'auto' } = {}) {
 
         const rawSummaries = await searchOrders(account, {
           mode: accountMode === 'incremental' ? 'incremental' : 'full',
-          dataAtualizacao
+          dataAtualizacao,
+          run
         });
 
         const existingAccountOrders = (
@@ -753,7 +941,7 @@ async function updateData({ mode: requestedMode = 'auto' } = {}) {
           const relevantSummaries = rawSummaries.filter(s => isOrderFromDate(s, today));
           if (qAcc) qAcc.changedOrders = relevantSummaries.length;
 
-          await enrichAccount(account, cache, relevantSummaries, { forceRefresh: true });
+          await enrichAccount(account, cache, relevantSummaries, { forceRefresh: true, run });
 
           for (const summary of relevantSummaries) {
             const key = String(summary.id || summary.numero || '');
@@ -773,7 +961,7 @@ async function updateData({ mode: requestedMode = 'auto' } = {}) {
           const todaySummaries = rawSummaries.filter(s => isOrderFromDate(s, today));
           if (qAcc) qAcc.changedOrders = todaySummaries.length;
 
-          await enrichAccount(account, cache, todaySummaries, { forceRefresh: false });
+          await enrichAccount(account, cache, todaySummaries, { forceRefresh: false, run });
 
           const nextAccountOrders = {};
           for (const summary of todaySummaries) {
@@ -789,6 +977,7 @@ async function updateData({ mode: requestedMode = 'auto' } = {}) {
           dailyState.ordersByAccount[account.empresa] = nextAccountOrders;
         }
 
+        ensureRunActive(run);
         dailyState.watermarks[account.empresa] = queryStartedIso;
         dailyState.lastSinceByAccount[account.empresa] = dataAtualizacao;
         writeDailyState(dailyState);
@@ -802,7 +991,7 @@ async function updateData({ mode: requestedMode = 'auto' } = {}) {
         cycleCompletedByEmpresa.set(account.empresa, true);
       }
     } catch (error) {
-      if (activeAccount) {
+      if (activeAccount && activeRun === run && error.code !== 'UPDATE_CANCELLED' && !run.cancelled) {
         const qAcc = getAccountQueueEntry(activeAccount.empresa);
         if (qAcc) {
           qAcc.lastError = error.message;
@@ -812,6 +1001,7 @@ async function updateData({ mode: requestedMode = 'auto' } = {}) {
       throw error;
     }
 
+    ensureRunActive(run);
     const now = new Date().toISOString();
     const currentDay = brDate(now);
     const slot = slotKey(now);
@@ -865,6 +1055,16 @@ async function updateData({ mode: requestedMode = 'auto' } = {}) {
   try {
     return await updating;
   } catch (error) {
+    if (error.code === 'UPDATE_CANCELLED' || run.cancelled) {
+      if (activeRun === run) {
+        syncQueue.currentTask = null;
+        syncQueue.updatedAt = new Date().toISOString();
+      }
+      throw error;
+    }
+
+    if (activeRun !== run) throw error;
+
     syncQueue.currentTask = null;
     syncQueue.updatedAt = new Date().toISOString();
 
@@ -916,8 +1116,11 @@ async function updateData({ mode: requestedMode = 'auto' } = {}) {
     }
     throw error;
   } finally {
-    updating = null;
-    updatingDate = null;
+    if (activeRun === run) {
+      updating = null;
+      updatingDate = null;
+      activeRun = null;
+    }
   }
 }
 
@@ -930,25 +1133,56 @@ function queueRecovery(delayMs = RETRY_BASE_MS) {
       await updateData({ mode: activeCycleMode || 'auto' });
       console.log('Reconciliação automática concluída');
     } catch (error) {
-      console.error(`Reconciliação automática: ${error.message}`);
+      if (error.code !== 'UPDATE_CANCELLED') {
+        console.error(`Reconciliação automática: ${error.message}`);
+      }
     }
   }, Math.max(10, Number(delayMs || RETRY_BASE_MS)));
   recoveryTimer.unref?.();
 }
 
 function schedule() {
+  if (scheduleTimer) {
+    clearTimeout(scheduleTimer);
+    scheduleTimer = null;
+  }
   const delay = Math.max(2000, INCREMENTAL_INTERVAL_MS);
-  setTimeout(async () => {
+  scheduleTimer = setTimeout(async () => {
+    scheduleTimer = null;
     if (!syncQueue.paused && process.env.READ_ONLY_PREVIEW !== '1') {
       try {
         await updateData({ mode: 'auto' });
         console.log(`Snapshot Tiny atualizado (${syncQueue.mode}): ${brHour(new Date())}`);
       } catch (error) {
-        console.error(`Atualização Tiny: ${error.message}`);
+        if (error.code !== 'UPDATE_CANCELLED') {
+          console.error(`Atualização Tiny: ${error.message}`);
+        }
       }
     }
-    schedule();
+    if (process.env.DISABLE_AUTO_UPDATE !== '1') schedule();
   }, delay);
+  scheduleTimer.unref?.();
+}
+
+function startBackgroundHistoricalReconciliation(targetDate) {
+  let job = historicalRefreshes.get(targetDate);
+  if (job?.status !== 'pending') {
+    const nextJob = { status: 'pending' };
+    historicalRefreshes.set(targetDate, nextJob);
+    job = nextJob;
+    reconcileHistoricalDate(targetDate).then(() => {
+      if (historicalRefreshes.get(targetDate) === nextJob) {
+        nextJob.status = 'completed';
+      }
+    }, error => {
+      if (historicalRefreshes.get(targetDate) === nextJob) {
+        nextJob.status = 'failed';
+        if (error.code === 'UPDATE_CANCELLED') nextJob.cancelled = true;
+        nextJob.error = error.message;
+      }
+    });
+  }
+  return job;
 }
 
 function readRequestBody(req) {
@@ -1034,6 +1268,73 @@ const server = http.createServer(async (req, res) => {
     return json(res, 200, { ok: true, queue, reconciliation: reconciliationState });
   }
 
+  if (url.pathname === '/api/queue/cancel' && req.method === 'POST') {
+    if (process.env.READ_ONLY_PREVIEW === '1') {
+      return json(res, 409, { error: 'Prévia local protegida: controle de fila desativado' });
+    }
+    if (!checkQueueControlAuth(req)) {
+      return json(res, 403, { error: 'Token de controle de fila inválido' });
+    }
+    const body = await readRequestBody(req);
+    const forceRefresh = body.forceRefresh === true || url.searchParams.get('forceRefresh') === '1';
+    const targetDate = url.searchParams.get('date') || body.date || brDate();
+    if (!validDate(targetDate)) {
+      return json(res, 400, { error: 'Data inválida. Use AAAA-MM-DD.' });
+    }
+    if (forceRefresh && targetDate > brDate()) {
+      return json(res, 400, { error: 'Não é possível reconciliar uma data futura.' });
+    }
+    const requestedMode = url.searchParams.get('mode') || body.mode || 'auto';
+    const background = url.searchParams.get('background') === '1' || body.background === true;
+    const cancelSummary = await cancelUpdateEvents({ reason: body.reason });
+    const { cancelGeneration: myCancelGeneration, ...publicCancelSummary } = cancelSummary;
+    if (!forceRefresh) {
+      return json(res, 200, {
+        ok: true,
+        ...publicCancelSummary,
+        queue: getQueueSnapshot(),
+        reconciliation: reconciliationState
+      });
+    }
+    if (cancelGeneration !== myCancelGeneration) {
+      return json(res, 409, {
+        error: 'Atualização cancelada por uma nova solicitação',
+        ...publicCancelSummary,
+        queue: getQueueSnapshot(),
+        reconciliation: reconciliationState
+      });
+    }
+    if (targetDate !== brDate() && background) {
+      const job = startBackgroundHistoricalReconciliation(targetDate);
+      return json(res, 202, {
+        ok: true,
+        ...publicCancelSummary,
+        dataDate: targetDate,
+        historicalReconciliation: job,
+        queue: getQueueSnapshot(),
+        reconciliation: reconciliationState
+      });
+    }
+    try {
+      return json(res, 200, {
+        ...await (targetDate === brDate() ? updateData({ mode: requestedMode }) : reconcileHistoricalDate(targetDate)),
+        ok: true,
+        ...publicCancelSummary,
+        reconciliation: reconciliationState,
+        queue: getQueueSnapshot()
+      });
+    } catch (error) {
+      console.error(error);
+      const statusCode = (error.code === 'QUEUE_PAUSED' || error.code === 'UPDATE_CANCELLED') ? 409 : 500;
+      return json(res, statusCode, {
+        error: error.message,
+        ...publicCancelSummary,
+        reconciliation: reconciliationState,
+        queue: getQueueSnapshot()
+      });
+    }
+  }
+
   if (url.pathname === '/api/update-data') {
     if (requestedDate > brDate()) {
       return json(res, 400, { error: 'Não é possível reconciliar uma data futura.' });
@@ -1051,17 +1352,7 @@ const server = http.createServer(async (req, res) => {
     const body = req.method === 'POST' ? await readRequestBody(req) : {};
     const requestedMode = url.searchParams.get('mode') || body.mode || 'auto';
     if (requestedDate !== brDate() && url.searchParams.get('background') === '1') {
-      let job = historicalRefreshes.get(requestedDate);
-      if (job?.status !== 'pending') {
-        job = { status: 'pending' };
-        historicalRefreshes.set(requestedDate, job);
-        reconcileHistoricalDate(requestedDate).then(() => {
-          job.status = 'completed';
-        }, error => {
-          job.status = 'failed';
-          job.error = error.message;
-        });
-      }
+      const job = startBackgroundHistoricalReconciliation(requestedDate);
       return json(res, 202, { dataDate: requestedDate, historicalReconciliation: job });
     }
     try {
@@ -1072,7 +1363,7 @@ const server = http.createServer(async (req, res) => {
       });
     } catch (error) {
       console.error(error);
-      const statusCode = error.code === 'QUEUE_PAUSED' ? 409 : 500;
+      const statusCode = (error.code === 'QUEUE_PAUSED' || error.code === 'UPDATE_CANCELLED') ? 409 : 500;
       return json(res, statusCode, {
         error: error.message,
         reconciliation: reconciliationState,
