@@ -1455,8 +1455,8 @@ const server = http.createServer(async (req, res) => {
     const target = getDailyTargetValue(targetDate);
     const check = canTriggerGoalReveal(all, { requestedDate: targetDate, todayDate: today, target });
     const currentState = readGoalRevealState(targetDate);
-    if (!currentState.revealed && !check.goalReached) {
-      return json(res, 409, { error: 'A meta diária ainda não foi atingida.' });
+    if (!currentState.revealed && !check.lockReached) {
+      return json(res, 409, { error: 'O travamento ainda não foi acionado (faturamento abaixo de R$ 690.000).' });
     }
     if (!currentState.revealed) {
       writeGoalRevealState({

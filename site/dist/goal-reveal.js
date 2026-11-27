@@ -8,6 +8,7 @@
   }
 })(typeof globalThis !== 'undefined' ? globalThis : this, function () {
   const GOAL_REVEAL_DATE = '2026-11-27';
+  const GOAL_LOCK_THRESHOLD = 690000;
 
   function num(value) {
     const parsed = Number(value || 0);
@@ -169,9 +170,9 @@
     };
   }
 
-  function recordPreGoalSnapshots(daySnapshots, { dataDate, todayDate, target, state } = {}) {
-    const goalTarget = num(target);
-    if (!isGoalRevealActive(dataDate, todayDate) || !(goalTarget > 0)) {
+  function recordPreGoalSnapshots(daySnapshots, { dataDate, todayDate, target, lockThreshold = GOAL_LOCK_THRESHOLD, state } = {}) {
+    const threshold = num(lockThreshold) > 0 ? num(lockThreshold) : num(target);
+    if (!isGoalRevealActive(dataDate, todayDate) || !(threshold > 0)) {
       return { nextState: null, stateChanged: false };
     }
     const currentState = state && state.dataDate === dataDate
@@ -184,7 +185,7 @@
       .filter(s => s && s.dataDate === dataDate)
       .sort((a, b) => new Date(a.at) - new Date(b.at));
     const latest = sorted.at(-1);
-    if (!latest || snapshotTotalGmv(latest) >= goalTarget) {
+    if (!latest || snapshotTotalGmv(latest) >= threshold) {
       return { nextState: null, stateChanged: false };
     }
     const sanitized = sanitizePreGoalSnapshots(sorted);
@@ -201,13 +202,16 @@
     };
   }
 
-  function resolveGoalReveal(allSnapshots, { requestedDate, todayDate, target, state, summarizeFinancial } = {}) {
+  function resolveGoalReveal(allSnapshots, { requestedDate, todayDate, target, lockThreshold = GOAL_LOCK_THRESHOLD, state, summarizeFinancial } = {}) {
     const goalTarget = num(target);
+    const threshold = num(lockThreshold) > 0 ? num(lockThreshold) : goalTarget;
     const list = Array.isArray(allSnapshots) ? allSnapshots : [];
     const inactiveReveal = {
       enabled: false,
       date: GOAL_REVEAL_DATE,
       target: goalTarget,
+      lockThreshold: threshold,
+      lockReached: false,
       goalReached: false,
       locked: false,
       revealed: false,
@@ -215,7 +219,7 @@
       canReveal: false
     };
 
-    if (!isGoalRevealActive(requestedDate, todayDate) || !(goalTarget > 0)) {
+    if (!isGoalRevealActive(requestedDate, todayDate) || !(threshold > 0)) {
       return {
         snapshotsForPayload: list,
         goalReveal: inactiveReveal,
@@ -230,7 +234,8 @@
       .sort((a, b) => new Date(a.at) - new Date(b.at));
     const latest = daySnapshots.at(-1) || null;
     const realTotalGmv = latest ? snapshotTotalGmv(latest) : 0;
-    const realGoalReached = Boolean(latest && realTotalGmv >= goalTarget);
+    const lockReached = Boolean(latest && realTotalGmv >= threshold);
+    const realGoalReached = Boolean(latest && goalTarget > 0 && realTotalGmv >= goalTarget);
     const currentState = state && state.dataDate === requestedDate
       ? state
       : createEmptyGoalRevealState(requestedDate);
@@ -242,6 +247,8 @@
           enabled: true,
           date: GOAL_REVEAL_DATE,
           target: goalTarget,
+          lockThreshold: threshold,
+          lockReached,
           goalReached: realGoalReached,
           locked: false,
           revealed: true,
@@ -253,11 +260,12 @@
       };
     }
 
-    if (!realGoalReached) {
+    if (!lockReached) {
       const recorded = recordPreGoalSnapshots(daySnapshots, {
         dataDate: requestedDate,
         todayDate,
         target: goalTarget,
+        lockThreshold: threshold,
         state: currentState
       });
       return {
@@ -266,6 +274,8 @@
           enabled: true,
           date: GOAL_REVEAL_DATE,
           target: goalTarget,
+          lockThreshold: threshold,
+          lockReached: false,
           goalReached: false,
           locked: false,
           revealed: false,
@@ -278,7 +288,7 @@
     }
 
     const savedPreGoal = Array.isArray(currentState.preGoalSnapshots) ? currentState.preGoalSnapshots : [];
-    const hasValidSavedPreGoal = savedPreGoal.length > 0 && snapshotTotalGmv(savedPreGoal.at(-1)) < goalTarget;
+    const hasValidSavedPreGoal = savedPreGoal.length > 0 && snapshotTotalGmv(savedPreGoal.at(-1)) < threshold;
 
     let frozenDaySnapshots;
     let nextState = null;
@@ -289,7 +299,7 @@
     } else {
       let lastPreGoalIndex = -1;
       for (let i = daySnapshots.length - 1; i >= 0; i--) {
-        if (snapshotTotalGmv(daySnapshots[i]) < goalTarget) {
+        if (snapshotTotalGmv(daySnapshots[i]) < threshold) {
           lastPreGoalIndex = i;
           break;
         }
@@ -297,7 +307,7 @@
       if (lastPreGoalIndex >= 0) {
         frozenDaySnapshots = sanitizePreGoalSnapshots(daySnapshots.slice(0, lastPreGoalIndex + 1));
       } else {
-        frozenDaySnapshots = [buildSyntheticPreGoalSnapshot(latest, goalTarget, summarizeFinancial)];
+        frozenDaySnapshots = [buildSyntheticPreGoalSnapshot(latest, threshold, summarizeFinancial)];
       }
       nextState = {
         ...currentState,
@@ -313,7 +323,9 @@
         enabled: true,
         date: GOAL_REVEAL_DATE,
         target: goalTarget,
-        goalReached: true,
+        lockThreshold: threshold,
+        lockReached: true,
+        goalReached: realGoalReached,
         locked: true,
         revealed: false,
         revealedAt: null,
@@ -324,10 +336,11 @@
     };
   }
 
-  function canTriggerGoalReveal(allSnapshots, { requestedDate, todayDate, target } = {}) {
+  function canTriggerGoalReveal(allSnapshots, { requestedDate, todayDate, target, lockThreshold = GOAL_LOCK_THRESHOLD } = {}) {
     const goalTarget = num(target);
-    const active = isGoalRevealActive(requestedDate, todayDate) && goalTarget > 0;
-    if (!active) return { active: false, goalReached: false, realTotalGmv: 0 };
+    const threshold = num(lockThreshold) > 0 ? num(lockThreshold) : goalTarget;
+    const active = isGoalRevealActive(requestedDate, todayDate) && threshold > 0;
+    if (!active) return { active: false, lockReached: false, goalReached: false, realTotalGmv: 0 };
     const daySnapshots = (Array.isArray(allSnapshots) ? allSnapshots : [])
       .filter(s => s?.dataDate === requestedDate)
       .sort((a, b) => new Date(a.at) - new Date(b.at));
@@ -335,13 +348,15 @@
     const realTotalGmv = latest ? snapshotTotalGmv(latest) : 0;
     return {
       active: true,
-      goalReached: Boolean(latest && realTotalGmv >= goalTarget),
+      lockReached: Boolean(latest && realTotalGmv >= threshold),
+      goalReached: Boolean(latest && goalTarget > 0 && realTotalGmv >= goalTarget),
       realTotalGmv
     };
   }
 
   return {
     GOAL_REVEAL_DATE,
+    GOAL_LOCK_THRESHOLD,
     isGoalRevealActive,
     snapshotTotalGmv,
     createEmptyGoalRevealState,

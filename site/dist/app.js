@@ -309,8 +309,8 @@ function updateGoalRevealControl(){
     revealBtn.classList.remove('ready');
     revealBtn.classList.add('revealed');
     if(icon)icon.textContent='✓';
-    if(label)label.textContent='Meta batida!';
-    revealBtn.title='Meta diária de 27/11 já revelada no painel';
+    if(label)label.textContent='Painel liberado';
+    revealBtn.title='Valores liberados em 27/11 — painel atualizando normalmente';
     return;
   }
   if(goalRevealState?.canReveal){
@@ -318,15 +318,15 @@ function updateGoalRevealControl(){
     revealBtn.classList.remove('revealed');
     revealBtn.classList.add('ready');
     if(icon)icon.textContent='🏆';
-    if(label)label.textContent='Mostrar meta batida';
-    revealBtn.title='Meta diária atingida! Clique para atualizar e mostrar a meta batida';
+    if(label)label.textContent='Liberar valores';
+    revealBtn.title='Valores travados a partir de R$ 690 mil! Clique para liberar e atualizar normalmente';
     return;
   }
   revealBtn.disabled=true;
   revealBtn.classList.remove('ready','revealed');
   if(icon)icon.textContent='🔒';
-  if(label)label.textContent='Aguardando meta';
-  revealBtn.title='Valores travados antes do atingimento até liberar a meta diária de 27/11';
+  if(label)label.textContent='Aguardando R$ 690 mil';
+  revealBtn.title='Trava os valores a partir de R$ 690 mil hoje (27/11) até clicar para liberar';
 }
 
 async function revealDailyGoal(){
@@ -335,13 +335,13 @@ async function revealDailyGoal(){
   revealingGoal=true;
   btn.disabled=true;
   btn.classList.add('loading');
-  if(label)label.textContent='Liberando meta...';
+  if(label)label.textContent='Liberando...';
   try{
     const lockDate=(typeof GOAL_REVEAL!=='undefined'&&GOAL_REVEAL.GOAL_REVEAL_DATE)||'2026-11-27';
     const date=selectedDate||todayDate||lockDate;
     const response=await fetch('/api/goal-reveal',{method:'POST',headers:{'Content-Type':'application/json'},cache:'no-store',body:JSON.stringify({date})});
     const raw=await response.json();
-    if(!response.ok)throw new Error(raw.error||'Não foi possível liberar a meta batida');
+    if(!response.ok)throw new Error(raw.error||'Não foi possível liberar os valores');
     revealingGoal=false;
     applyLoadedPayload(raw,false);
     for(const selector of ['.metric.target','.metric.featured']){
@@ -352,9 +352,9 @@ async function revealDailyGoal(){
         setTimeout(()=>card.classList.remove('goal-revealed-pop'),1400);
       }
     }
-    toast('Meta diária batida revelada!');
+    toast(goalRevealState?.goalReached?'Meta diária batida revelada!':'Valores liberados! Atualização retomada.');
   }catch(error){
-    toast(error.message||'Não foi possível liberar a meta batida');
+    toast(error.message||'Não foi possível liberar os valores');
   }finally{
     revealingGoal=false;
     btn.classList.remove('loading');

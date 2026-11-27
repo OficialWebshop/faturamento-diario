@@ -13,6 +13,7 @@ const goalReveal = require('../site/dist/goal-reveal');
 
 const ROOT = path.resolve(__dirname, '..');
 const TARGET_27_11 = getDailyTargetValue('2026-11-27');
+const LOCK_THRESHOLD = goalReveal.GOAL_LOCK_THRESHOLD;
 
 function makeSnapshot(date, slot, gmv, { reachedAt = null, withAnalytics = true } = {}) {
   const analytics = withAnalytics ? [
@@ -37,8 +38,9 @@ function makeSnapshot(date, slot, gmv, { reachedAt = null, withAnalytics = true 
   };
 }
 
-test('goal reveal lock is strictly restricted to today 2026-11-27', () => {
+test('goal reveal lock is strictly restricted to today 2026-11-27 with 690k threshold', () => {
   assert.equal(TARGET_27_11, 717684);
+  assert.equal(LOCK_THRESHOLD, 690000);
   assert.equal(goalReveal.isGoalRevealActive('2026-11-27', '2026-11-27'), true);
   assert.equal(goalReveal.isGoalRevealActive('2026-11-26', '2026-11-27'), false);
   assert.equal(goalReveal.isGoalRevealActive('2026-11-27', '2026-11-28'), false);
@@ -57,7 +59,7 @@ test('goal reveal lock is strictly restricted to today 2026-11-27', () => {
   assert.equal(nextDayViewing27.goalReveal.canReveal, false);
   assert.equal(goalReveal.snapshotTotalGmv(nextDayViewing27.snapshotsForPayload.at(-1)), 750000);
 
-  const overTarget26 = [makeSnapshot('2026-11-26', '18:00', 400000)];
+  const overTarget26 = [makeSnapshot('2026-11-26', '18:00', 700000)];
   const viewing26On27 = goalReveal.resolveGoalReveal(overTarget26, {
     requestedDate: '2026-11-26',
     todayDate: '2026-11-27',
@@ -67,15 +69,15 @@ test('goal reveal lock is strictly restricted to today 2026-11-27', () => {
   });
   assert.equal(viewing26On27.goalReveal.enabled, false);
   assert.equal(viewing26On27.goalReveal.locked, false);
-  assert.equal(goalReveal.snapshotTotalGmv(viewing26On27.snapshotsForPayload.at(-1)), 400000);
+  assert.equal(goalReveal.snapshotTotalGmv(viewing26On27.snapshotsForPayload.at(-1)), 700000);
 });
 
-test('locks dashboard to last pre-goal snapshot on 2026-11-27, handles cancellation drop, and unlocks on reveal', () => {
+test('locks dashboard from 690k on 2026-11-27, handles drop below 690k, and resumes normally after reveal', () => {
   const prevDay = makeSnapshot('2026-11-26', '23:30', 320000);
-  const s1 = makeSnapshot('2026-11-27', '17:30', 690000);
-  const s2 = makeSnapshot('2026-11-27', '18:00', 712500);
+  const s1 = makeSnapshot('2026-11-27', '17:30', 650000);
+  const s2 = makeSnapshot('2026-11-27', '18:00', 688500);
 
-  // 1. Pre-goal: records pre-goal snapshots and stays unlocked/disabled
+  // 1. Below 690k: updates normally and saves pre-lock snapshot
   let state = goalReveal.createEmptyGoalRevealState('2026-11-27');
   let res = goalReveal.resolveGoalReveal([prevDay, s1, s2], {
     requestedDate: '2026-11-27',
@@ -85,14 +87,35 @@ test('locks dashboard to last pre-goal snapshot on 2026-11-27, handles cancellat
     summarizeFinancial
   });
   assert.equal(res.goalReveal.enabled, true);
+  assert.equal(res.goalReveal.lockReached, false);
   assert.equal(res.goalReveal.goalReached, false);
   assert.equal(res.goalReveal.locked, false);
   assert.equal(res.goalReveal.canReveal, false);
   assert.equal(res.stateChanged, true);
   state = res.nextState;
-  assert.equal(goalReveal.snapshotTotalGmv(res.snapshotsForPayload.at(-1)), 712500);
+  assert.equal(goalReveal.snapshotTotalGmv(res.snapshotsForPayload.at(-1)), 688500);
 
-  // 2. Goal crossed in same slot (18:00 overwritten to 725000): locks at 712500 and enables reveal button
+  // 2. Reaches 690k (695.000): locks at 688.500 and enables reveal button
+  const s2At695 = makeSnapshot('2026-11-27', '18:00', 695000);
+  res = goalReveal.resolveGoalReveal([prevDay, s1, s2At695], {
+    requestedDate: '2026-11-27',
+    todayDate: '2026-11-27',
+    target: TARGET_27_11,
+    state,
+    summarizeFinancial
+  });
+  assert.equal(res.goalReveal.enabled, true);
+  assert.equal(res.goalReveal.lockReached, true);
+  assert.equal(res.goalReveal.goalReached, false);
+  assert.equal(res.goalReveal.locked, true);
+  assert.equal(res.goalReveal.canReveal, true);
+  assert.equal(res.goalReveal.revealed, false);
+  const frozenDay = res.snapshotsForPayload.filter(s => s.dataDate === '2026-11-27');
+  const frozenPrev = res.snapshotsForPayload.filter(s => s.dataDate === '2026-11-26');
+  assert.equal(frozenPrev.length, 1, 'preserves previous-day closing for comparison');
+  assert.equal(goalReveal.snapshotTotalGmv(frozenDay.at(-1)), 688500);
+
+  // 3. Crosses daily goal (725.000): stays locked at 688.500 with goalReached=true and no leaked reachedAt
   const s2Crossed = makeSnapshot('2026-11-27', '18:00', 725000, { reachedAt: '2026-11-27T18:10:00-03:00' });
   res = goalReveal.resolveGoalReveal([prevDay, s1, s2Crossed], {
     requestedDate: '2026-11-27',
@@ -101,19 +124,16 @@ test('locks dashboard to last pre-goal snapshot on 2026-11-27, handles cancellat
     state,
     summarizeFinancial
   });
-  assert.equal(res.goalReveal.enabled, true);
-  assert.equal(res.goalReveal.goalReached, true);
   assert.equal(res.goalReveal.locked, true);
+  assert.equal(res.goalReveal.lockReached, true);
+  assert.equal(res.goalReveal.goalReached, true);
   assert.equal(res.goalReveal.canReveal, true);
-  assert.equal(res.goalReveal.revealed, false);
-  const frozenDay = res.snapshotsForPayload.filter(s => s.dataDate === '2026-11-27');
-  const frozenPrev = res.snapshotsForPayload.filter(s => s.dataDate === '2026-11-26');
-  assert.equal(frozenPrev.length, 1, 'preserves previous-day closing for comparison');
-  assert.equal(goalReveal.snapshotTotalGmv(frozenDay.at(-1)), 712500);
-  assert.equal(frozenDay.at(-1).goalReached, undefined);
+  const frozenDay2 = res.snapshotsForPayload.filter(s => s.dataDate === '2026-11-27');
+  assert.equal(goalReveal.snapshotTotalGmv(frozenDay2.at(-1)), 688500);
+  assert.equal(frozenDay2.at(-1).goalReached, undefined);
 
-  // 3. Real GMV drops back below target due to cancellation before reveal: reverts to unlocked pre-goal
-  const s2Cancelled = makeSnapshot('2026-11-27', '18:00', 710000);
+  // 4. Drops below 690k (682.000) before reveal: reverts to unlocked pre-lock
+  const s2Cancelled = makeSnapshot('2026-11-27', '18:00', 682000);
   res = goalReveal.resolveGoalReveal([prevDay, s1, s2Cancelled], {
     requestedDate: '2026-11-27',
     todayDate: '2026-11-27',
@@ -122,11 +142,12 @@ test('locks dashboard to last pre-goal snapshot on 2026-11-27, handles cancellat
     summarizeFinancial
   });
   assert.equal(res.goalReveal.locked, false);
+  assert.equal(res.goalReveal.lockReached, false);
   assert.equal(res.goalReveal.canReveal, false);
-  assert.equal(goalReveal.snapshotTotalGmv(res.snapshotsForPayload.at(-1)), 710000);
+  assert.equal(goalReveal.snapshotTotalGmv(res.snapshotsForPayload.at(-1)), 682000);
   state = res.nextState;
 
-  // 4. Crosses target again (740000): locks at 710000 and enables button
+  // 5. Crosses 690k+ again (740.000): locks at 682.000 and enables button
   const s3Crossed = makeSnapshot('2026-11-27', '18:30', 740000, { reachedAt: '2026-11-27T18:30:00-03:00' });
   res = goalReveal.resolveGoalReveal([prevDay, s1, s2Cancelled, s3Crossed], {
     requestedDate: '2026-11-27',
@@ -137,11 +158,12 @@ test('locks dashboard to last pre-goal snapshot on 2026-11-27, handles cancellat
   });
   assert.equal(res.goalReveal.locked, true);
   assert.equal(res.goalReveal.canReveal, true);
-  assert.equal(goalReveal.snapshotTotalGmv(res.snapshotsForPayload.filter(s => s.dataDate === '2026-11-27').at(-1)), 710000);
+  assert.equal(goalReveal.snapshotTotalGmv(res.snapshotsForPayload.filter(s => s.dataDate === '2026-11-27').at(-1)), 682000);
 
-  // 5. After reveal button is clicked: unlocks and returns real 740000 with goalReached preserved
+  // 6. After reveal button is clicked: unlocks and continues updating normally
   state = { ...state, revealed: true, revealedAt: '2026-11-27T21:35:00.000Z' };
-  res = goalReveal.resolveGoalReveal([prevDay, s1, s2Cancelled, s3Crossed], {
+  const s4Later = makeSnapshot('2026-11-27', '19:00', 765000, { reachedAt: '2026-11-27T18:30:00-03:00' });
+  res = goalReveal.resolveGoalReveal([prevDay, s1, s2Cancelled, s3Crossed, s4Later], {
     requestedDate: '2026-11-27',
     todayDate: '2026-11-27',
     target: TARGET_27_11,
@@ -152,14 +174,14 @@ test('locks dashboard to last pre-goal snapshot on 2026-11-27, handles cancellat
   assert.equal(res.goalReveal.revealed, true);
   assert.equal(res.goalReveal.canReveal, false);
   const unlockedDay = res.snapshotsForPayload.filter(s => s.dataDate === '2026-11-27');
-  assert.equal(goalReveal.snapshotTotalGmv(unlockedDay.at(-1)), 740000);
+  assert.equal(goalReveal.snapshotTotalGmv(unlockedDay.at(-1)), 765000);
   assert.equal(unlockedDay.at(-1).goalReached.reachedAt.Consolidado, '2026-11-27T18:30:00-03:00');
 });
 
-test('fallbacks stay strictly below target when no saved pre-goal state existed yet', () => {
-  // Subcase A: earlier slot in history is below target
-  const earlier = makeSnapshot('2026-11-27', '17:30', 680000, { withAnalytics: false });
-  const crossed = makeSnapshot('2026-11-27', '18:00', 735000, { reachedAt: '2026-11-27T18:00:00-03:00' });
+test('fallbacks stay strictly below 690k when no saved pre-lock state existed yet', () => {
+  // Subcase A: earlier slot in history is below 690k
+  const earlier = makeSnapshot('2026-11-27', '17:30', 675000, { withAnalytics: false });
+  const crossed = makeSnapshot('2026-11-27', '18:00', 705000);
   const fromHistory = goalReveal.resolveGoalReveal([earlier, crossed], {
     requestedDate: '2026-11-27',
     todayDate: '2026-11-27',
@@ -169,7 +191,7 @@ test('fallbacks stay strictly below target when no saved pre-goal state existed 
   });
   assert.equal(fromHistory.goalReveal.locked, true);
   assert.equal(fromHistory.stateChanged, true);
-  assert.equal(goalReveal.snapshotTotalGmv(fromHistory.snapshotsForPayload.at(-1)), 680000);
+  assert.equal(goalReveal.snapshotTotalGmv(fromHistory.snapshotsForPayload.at(-1)), 675000);
 
   // Subcase B: only a single already-crossed snapshot with analytics
   const singleWithAnalytics = {
@@ -198,7 +220,7 @@ test('fallbacks stay strictly below target when no saved pre-goal state existed 
   });
   assert.equal(syntheticAnalytics.goalReveal.locked, true);
   const synGmv = goalReveal.snapshotTotalGmv(syntheticAnalytics.snapshotsForPayload.at(-1));
-  assert.ok(synGmv > 0 && synGmv < TARGET_27_11, `expected synthetic GMV below target, got ${synGmv}`);
+  assert.ok(synGmv > 0 && synGmv < LOCK_THRESHOLD, `expected synthetic GMV below 690k, got ${synGmv}`);
 
   // Subcase C: only a single already-crossed legacy snapshot without analytics
   const singleLegacy = makeSnapshot('2026-11-27', '18:00', 740000, { withAnalytics: false });
@@ -210,10 +232,10 @@ test('fallbacks stay strictly below target when no saved pre-goal state existed 
     summarizeFinancial
   });
   const synLegacyGmv = goalReveal.snapshotTotalGmv(syntheticLegacy.snapshotsForPayload.at(-1));
-  assert.ok(synLegacyGmv > 0 && synLegacyGmv < TARGET_27_11, `expected scaled legacy GMV below target, got ${synLegacyGmv}`);
+  assert.ok(synLegacyGmv > 0 && synLegacyGmv < LOCK_THRESHOLD, `expected scaled legacy GMV below 690k, got ${synLegacyGmv}`);
 });
 
-test('frontend replaces Importar base on 27/11, unlocks button on goal hit, and reveals achieved goal on click', async () => {
+test('frontend replaces Importar base on 27/11, unlocks button from 690k, and resumes normally on click', async () => {
   const html = fs.readFileSync(path.join(ROOT, 'site', 'dist', 'index.html'), 'utf8');
   assert.match(html, /id="uploadBaseBtn"/);
   assert.match(html, /id="goalRevealBtn"/);
@@ -268,11 +290,11 @@ test('frontend replaces Importar base on 27/11, unlocks button on goal hit, and 
     goalReveal: revealMeta
   });
 
-  let nextApiResponse = makePayload('2026-11-27', '2026-11-27', 712500, {
-    enabled: true, date: '2026-11-27', target: TARGET_27_11, goalReached: false, locked: false, revealed: false, revealedAt: null, canReveal: false
+  let nextApiResponse = makePayload('2026-11-27', '2026-11-27', 688500, {
+    enabled: true, date: '2026-11-27', target: TARGET_27_11, lockThreshold: LOCK_THRESHOLD, lockReached: false, goalReached: false, locked: false, revealed: false, revealedAt: null, canReveal: false
   });
   const revealResponse = makePayload('2026-11-27', '2026-11-27', 730000, {
-    enabled: true, date: '2026-11-27', target: TARGET_27_11, goalReached: true, locked: false, revealed: true, revealedAt: '2026-11-27T21:20:00.000Z', canReveal: false
+    enabled: true, date: '2026-11-27', target: TARGET_27_11, lockThreshold: LOCK_THRESHOLD, lockReached: true, goalReached: true, locked: false, revealed: true, revealedAt: '2026-11-27T21:20:00.000Z', canReveal: false
   }, { Consolidado: '2026-11-27T21:10:00.000Z' });
   let revealRequest = null;
 
@@ -301,7 +323,7 @@ test('frontend replaces Importar base on 27/11, unlocks button on goal hit, and 
     vm.runInContext(fs.readFileSync(path.join(ROOT, 'site', 'dist', file), 'utf8'), context);
   }
 
-  // 1. Pre-goal on 27/11: Importar base hidden, reveal button visible & disabled
+  // 1. Below 690k on 27/11: Importar base hidden, reveal button visible & disabled
   assert.equal(await vm.runInContext('loadBigQuery(false)', context), true);
   const uploadBtn = elements.get('#uploadBaseBtn');
   const revealBtn = elements.get('#goalRevealBtn');
@@ -309,25 +331,23 @@ test('frontend replaces Importar base on 27/11, unlocks button on goal hit, and 
   assert.equal(uploadBtn.hidden, true);
   assert.equal(revealBtn.hidden, false);
   assert.equal(revealBtn.disabled, true);
-  assert.equal(revealLabel.textContent, 'Aguardando meta');
-  assert.equal(elements.get('#totalGMV').textContent, 'R$ 712.500');
-  assert.equal(elements.get('#targetValue').textContent, '99.3%');
-  assert.match(elements.get('#targetGap').textContent, /Faltam/);
+  assert.equal(revealLabel.textContent, 'Aguardando R$ 690 mil');
+  assert.equal(elements.get('#totalGMV').textContent, 'R$ 688.500');
 
-  // 2. Goal reached while locked: values stay at 712.500, button unlocks and highlights
-  nextApiResponse = makePayload('2026-11-27', '2026-11-27', 712500, {
-    enabled: true, date: '2026-11-27', target: TARGET_27_11, goalReached: true, locked: true, revealed: false, revealedAt: null, canReveal: true
+  // 2. Reached 690k+ while locked: values stay at 688.500, button unlocks and highlights
+  nextApiResponse = makePayload('2026-11-27', '2026-11-27', 688500, {
+    enabled: true, date: '2026-11-27', target: TARGET_27_11, lockThreshold: LOCK_THRESHOLD, lockReached: true, goalReached: true, locked: true, revealed: false, revealedAt: null, canReveal: true
   });
   await vm.runInContext('loadBigQuery(false)', context);
   assert.equal(uploadBtn.hidden, true);
   assert.equal(revealBtn.hidden, false);
   assert.equal(revealBtn.disabled, false);
   assert.equal(revealBtn.classList.contains('ready'), true);
-  assert.equal(revealLabel.textContent, 'Mostrar meta batida');
-  assert.equal(elements.get('#totalGMV').textContent, 'R$ 712.500');
+  assert.equal(revealLabel.textContent, 'Liberar valores');
+  assert.equal(elements.get('#totalGMV').textContent, 'R$ 688.500');
   assert.equal(elements.get('#targetValue').style.color, '');
 
-  // 3. Click button: posts /api/goal-reveal, updates dashboard to achieved goal, marks revealed
+  // 3. Click button: posts /api/goal-reveal, updates dashboard to real achieved values, marks revealed
   await revealBtn.listeners.click();
   assert.deepEqual(revealRequest, {
     url: '/api/goal-reveal',
@@ -341,19 +361,19 @@ test('frontend replaces Importar base on 27/11, unlocks button on goal hit, and 
   assert.equal(revealBtn.disabled, true);
   assert.equal(revealBtn.classList.contains('ready'), false);
   assert.equal(revealBtn.classList.contains('revealed'), true);
-  assert.equal(revealLabel.textContent, 'Meta batida!');
+  assert.equal(revealLabel.textContent, 'Painel liberado');
   assert.equal(elements.get('#toast').textContent, 'Meta diária batida revelada!');
 
-  // 4. Outside 27/11 (e.g., viewing 26/11 or next day 28/11): Importar base returns, reveal button hides
+  // 4. Outside 27/11: Importar base returns, reveal button hides
   nextApiResponse = makePayload('2026-11-26', '2026-11-27', 350000, {
-    enabled: false, date: '2026-11-27', target: getDailyTargetValue('2026-11-26'), goalReached: false, locked: false, revealed: false, revealedAt: null, canReveal: false
+    enabled: false, date: '2026-11-27', target: getDailyTargetValue('2026-11-26'), lockThreshold: LOCK_THRESHOLD, lockReached: false, goalReached: false, locked: false, revealed: false, revealedAt: null, canReveal: false
   });
   await vm.runInContext('loadBigQuery(false)', context);
   assert.equal(uploadBtn.hidden, false);
   assert.equal(revealBtn.hidden, true);
 });
 
-test('HTTP server locks values on 2026-11-27 when Tiny sync crosses target and unlocks via POST /api/goal-reveal', async t => {
+test('HTTP server locks values from 690k on 2026-11-27 and resumes normal updates after POST /api/goal-reveal', async t => {
   if (brDateIso() !== '2026-11-27') return;
 
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bf-goal-reveal-'));
@@ -365,7 +385,7 @@ test('HTTP server locks values on 2026-11-27 when Tiny sync crosses target and u
   const dailyStateFile = path.join(tmpDir, 'daily-orders-state.json');
   const revealStateFile = path.join(tmpDir, 'goal-reveal-state.json');
 
-  let phase = 'before_goal';
+  let phase = 'below_690k';
   const mockTiny = http.createServer((req, res) => {
     let body = '';
     req.on('data', chunk => { body += String(chunk); });
@@ -375,20 +395,27 @@ test('HTTP server locks values on 2026-11-27 when Tiny sync crosses target and u
       res.writeHead(200, { 'Content-Type': 'application/json' });
       if (req.url === '/pesquisa') {
         if (token === 'tok_of') {
-          const pedidos = phase === 'before_goal'
-            ? [{ pedido: { id: '1', numero: '1001', data_pedido: '27/11/2026', situacao: 'Faturado', valor: '710000.00' } }]
-            : [
-                { pedido: { id: '1', numero: '1001', data_pedido: '27/11/2026', situacao: 'Faturado', valor: '710000.00' } },
-                { pedido: { id: '2', numero: '1002', data_pedido: '27/11/2026', situacao: 'Faturado', valor: '25000.00' } }
-              ];
+          const pedidos = phase === 'below_690k'
+            ? [{ pedido: { id: '1', numero: '1001', data_pedido: '27/11/2026', situacao: 'Faturado', valor: '685000.00' } }]
+            : phase === 'above_690k'
+              ? [
+                  { pedido: { id: '1', numero: '1001', data_pedido: '27/11/2026', situacao: 'Faturado', valor: '685000.00' } },
+                  { pedido: { id: '2', numero: '1002', data_pedido: '27/11/2026', situacao: 'Faturado', valor: '15000.00' } }
+                ]
+              : [
+                  { pedido: { id: '1', numero: '1001', data_pedido: '27/11/2026', situacao: 'Faturado', valor: '685000.00' } },
+                  { pedido: { id: '2', numero: '1002', data_pedido: '27/11/2026', situacao: 'Faturado', valor: '15000.00' } },
+                  { pedido: { id: '3', numero: '1003', data_pedido: '27/11/2026', situacao: 'Faturado', valor: '40000.00' } }
+                ];
           return res.end(JSON.stringify({ retorno: { status: 'OK', numero_paginas: 1, pedidos } }));
         }
         return res.end(JSON.stringify({ retorno: { status: 'Erro', codigo_erro: 20, erros: [{ erro: 'A consulta não retornou registros' }] } }));
       }
       const id = params.get('id');
       const details = {
-        '1': { id: '1', numero: '1001', data_pedido: '27/11/2026', situacao: 'Faturado', total_pedido: '710000.00', ecommerce: { nomeEcommerce: 'Mercado Livre' }, marcadores: [] },
-        '2': { id: '2', numero: '1002', data_pedido: '27/11/2026', situacao: 'Faturado', total_pedido: '25000.00', ecommerce: { nomeEcommerce: 'Shopee' }, marcadores: [] }
+        '1': { id: '1', numero: '1001', data_pedido: '27/11/2026', situacao: 'Faturado', total_pedido: '685000.00', ecommerce: { nomeEcommerce: 'Mercado Livre' }, marcadores: [] },
+        '2': { id: '2', numero: '1002', data_pedido: '27/11/2026', situacao: 'Faturado', total_pedido: '15000.00', ecommerce: { nomeEcommerce: 'Shopee' }, marcadores: [] },
+        '3': { id: '3', numero: '1003', data_pedido: '27/11/2026', situacao: 'Faturado', total_pedido: '40000.00', ecommerce: { nomeEcommerce: 'Amazon' }, marcadores: [] }
       };
       return res.end(JSON.stringify({ retorno: { status: 'OK', pedido: details[id] } }));
     });
@@ -440,16 +467,16 @@ test('HTTP server locks values on 2026-11-27 when Tiny sync crosses target and u
 
   const baseUrl = `http://127.0.0.1:${port}`;
 
-  // 1. Pre-goal update: 710.000 < 717.684
+  // 1. Below 690k (685.000): normal updates, reveal endpoint returns 409
   const preRes = await fetch(`${baseUrl}/api/update-data?mode=full`);
   assert.equal(preRes.status, 200);
   const preBody = await preRes.json();
-  assert.equal(preBody.metrics.totalGmv, 710000);
+  assert.equal(preBody.metrics.totalGmv, 685000);
   assert.equal(preBody.goalReveal.enabled, true);
+  assert.equal(preBody.goalReveal.lockReached, false);
   assert.equal(preBody.goalReveal.locked, false);
   assert.equal(preBody.goalReveal.canReveal, false);
 
-  // Attempting to reveal before hitting goal must return 409
   const earlyReveal = await fetch(`${baseUrl}/api/goal-reveal`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -457,22 +484,17 @@ test('HTTP server locks values on 2026-11-27 when Tiny sync crosses target and u
   });
   assert.equal(earlyReveal.status, 409);
 
-  // 2. Goal crossed (735.000 >= 717.684): both /api/update-data and /api/data stay locked at 710.000
-  phase = 'after_goal';
-  const crossedRes = await fetch(`${baseUrl}/api/update-data?mode=full`);
-  assert.equal(crossedRes.status, 200);
-  const crossedBody = await crossedRes.json();
-  assert.equal(crossedBody.metrics.totalGmv, 710000);
-  assert.equal(crossedBody.goalReveal.locked, true);
-  assert.equal(crossedBody.goalReveal.canReveal, true);
-  assert.equal(crossedBody.goalReachedAt.Consolidado, undefined);
+  // 2. Crosses 690k (700.000): locks at 685.000 and enables button
+  phase = 'above_690k';
+  const lockedRes = await fetch(`${baseUrl}/api/update-data?mode=full`);
+  assert.equal(lockedRes.status, 200);
+  const lockedBody = await lockedRes.json();
+  assert.equal(lockedBody.metrics.totalGmv, 685000);
+  assert.equal(lockedBody.goalReveal.lockReached, true);
+  assert.equal(lockedBody.goalReveal.locked, true);
+  assert.equal(lockedBody.goalReveal.canReveal, true);
 
-  const lockedData = await (await fetch(`${baseUrl}/api/data?date=2026-11-27`)).json();
-  assert.equal(lockedData.metrics.totalGmv, 710000);
-  assert.equal(lockedData.goalReveal.locked, true);
-  assert.equal(lockedData.goalReveal.canReveal, true);
-
-  // 3. Click reveal button -> POST /api/goal-reveal returns real 735.000 and unlocks future /api/data calls
+  // 3. Click reveal button -> unlocks to 700.000
   const revealRes = await fetch(`${baseUrl}/api/goal-reveal`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -481,13 +503,18 @@ test('HTTP server locks values on 2026-11-27 when Tiny sync crosses target and u
   assert.equal(revealRes.status, 200);
   const revealBody = await revealRes.json();
   assert.equal(revealBody.ok, true);
-  assert.equal(revealBody.metrics.totalGmv, 735000);
+  assert.equal(revealBody.metrics.totalGmv, 700000);
   assert.equal(revealBody.goalReveal.locked, false);
   assert.equal(revealBody.goalReveal.revealed, true);
-  assert.equal(revealBody.goalReveal.canReveal, false);
-  assert.ok(revealBody.goalReachedAt.Consolidado, 'real goalReachedAt timestamp is exposed once revealed');
 
-  const afterRevealData = await (await fetch(`${baseUrl}/api/data?date=2026-11-27`)).json();
-  assert.equal(afterRevealData.metrics.totalGmv, 735000);
-  assert.equal(afterRevealData.goalReveal.revealed, true);
+  // 4. Subsequent sync (740.000) updates normally without locking again
+  phase = 'after_reveal';
+  const nextRes = await fetch(`${baseUrl}/api/update-data?mode=full`);
+  assert.equal(nextRes.status, 200);
+  const nextBody = await nextRes.json();
+  assert.equal(nextBody.metrics.totalGmv, 740000);
+  assert.equal(nextBody.goalReveal.locked, false);
+  assert.equal(nextBody.goalReveal.revealed, true);
+  assert.equal(nextBody.goalReveal.goalReached, true);
+  assert.ok(nextBody.goalReachedAt.Consolidado);
 });
