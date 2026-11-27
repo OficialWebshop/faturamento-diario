@@ -6,11 +6,10 @@ const financial=require('../site/dist/financial-report');
 const classifier=require('../site/dist/order-classifier');
 const {goalState,dayComparison}=require('../site/dist/dashboard-data');
 test('financial statuses are independent of the executive rule',()=>{
-  for(const situacao of ['Faturado','Aprovado','Preparando para envio','Enviado','Entregue','Pronto para envio','Dados incompletos','Não entregue'])assert(financial.financialSale({situacao}),situacao);
+  for(const situacao of ['Faturado','Aprovado','Preparando envio','Enviado','Entregue','Pronto para envio'])assert(financial.financialSale({situacao}),situacao);
   assert(financial.financialSale({situacao:' preparando  envio '}));
-  for(const situacao of ['Em aberto','Cancelado','Excluído','Reprovado','',null])assert.equal(financial.financialSale({situacao}),false,String(situacao));
+  for(const situacao of ['Em aberto','Dados incompletos','Não entregue','Preparando para envio','Cancelado','Excluído','Reprovado','',null])assert.equal(financial.financialSale({situacao}),false,String(situacao));
   assert(classifier.countableSale({situacao:'Em aberto'}));
-  assert.equal(classifier.countableSale({situacao:'Dados incompletos'}),false);
 });
 function fixture(){
   const row=(pedido,situacao,valor,empresa,canal,fulfillment=false)=>({pedido,situacao,valor,empresa,canal,fulfillment,detalhe:'Completo',contabilizado:classifier.countableSale({situacao})});
@@ -20,14 +19,14 @@ function fixture(){
   const latest={dataDate:'2026-11-25',at:'2026-11-25T17:00:00Z',slot:'14:00',channels:{Meli:400,Shopee:200},orders:{Meli:2,Shopee:1},business:[{empresa:'Oficial',canal:'Meli',gmv:400,pedidos:2},{empresa:'Prioriza',canal:'Shopee',gmv:200,pedidos:1}],analytics,financial:financial.summarize(analytics)};
   return {analytics,earlier,latest};
 }
-test('financial aggregation includes incomplete and undelivered while excluding open orders',()=>{
-  const {analytics}=fixture(),result=financial.summarize(analytics);
-  assert.equal(result.analytics.length,4);
-  assert.equal(Object.values(result.channels).reduce((s,v)=>s+v,0),575);
-  assert.equal(result.channels.Meli,325);
-  assert.equal(result.business.find(row=>row.canal==='Amazon').fullGmv,50);
+test('financial aggregation excludes open, incomplete and undelivered orders',()=>{
+  const {analytics}=fixture(),original=JSON.stringify(analytics),result=financial.summarize(analytics);
+  assert.equal(result.analytics.length,2);
+  assert.equal(Object.values(result.channels).reduce((s,v)=>s+v,0),500);
+  assert.equal(result.channels.Meli,300);
+  assert.equal(result.business.some(row=>row.canal==='Amazon'),false);
   assert(!result.analytics.some(row=>row.pedido==='open'));
-  assert(analytics.find(row=>row.pedido==='incomplete').contabilizado===false);
+  assert.equal(JSON.stringify(analytics),original);
   assert(result.analytics.every(row=>row.contabilizado));
 });
 function payload(){
@@ -41,10 +40,10 @@ test('API provides separate totals and history without changing executive metric
   const result=payload();
   assert.equal(result.metrics.totalGmv,600);
   assert.equal(result.metrics.totalOrders,3);
-  assert.equal(result.financial.metrics.totalGmv,575);
-  assert.equal(result.financial.metrics.totalOrders,4);
+  assert.equal(result.financial.metrics.totalGmv,500);
+  assert.equal(result.financial.metrics.totalOrders,2);
   assert.equal(result.financial.snapshotHistory.length,2);
-  assert.equal(result.financial.series.flatMap(row=>row.hours).reduce((s,p)=>s+p.value,0),575);
+  assert.equal(result.financial.series.flatMap(row=>row.hours).reduce((s,p)=>s+p.value,0),500);
   assert.equal(result.financial.analytics.some(row=>row.situacao==='Em aberto'),false);
   assert.equal(result.financial.financial,undefined);
 });
@@ -59,16 +58,16 @@ test('report switches reuse the dashboard and preserve the analytical table and 
   assert.equal(await vm.runInContext('loadBigQuery()',context),true);
   assert.equal(nodes.get('#totalGMV').textContent,'R$ 600');
   assert.match(nodes.get('#totalDelta').textContent,/20.0% vs. dia anterior/);
-  assert.match(nodes.get('#financialDifference').textContent,/-4.2%/);
+  assert.match(nodes.get('#financialDifference').textContent,/-16.7%/);
   vm.runInContext("setReport('financial')",context);
-  assert.equal(nodes.get('#totalGMV').textContent,'R$ 575');
-  assert.equal(nodes.get('#ordersKpi').textContent,'4');
+  assert.equal(nodes.get('#totalGMV').textContent,'R$ 500');
+  assert.equal(nodes.get('#ordersKpi').textContent,'2');
   assert.equal(nodes.get('#financialDifference').hidden,true);
   assert.equal(vm.runInContext('analyticData.length',context),5);
   vm.runInContext("applyScope('Oficial')",context);
-  assert.equal(nodes.get('#totalGMV').textContent,'R$ 375');
+  assert.equal(nodes.get('#totalGMV').textContent,'R$ 300');
   vm.runInContext("applyScope('Full')",context);
-  assert.equal(nodes.get('#totalGMV').textContent,'R$ 50');
+  assert.equal(nodes.get('#totalGMV').textContent,'R$ 0');
   vm.runInContext("setReport('executive')",context);
   assert.equal(nodes.get('#totalGMV').textContent,'R$ 0');
   vm.runInContext("applyScope('Consolidado')",context);
@@ -77,5 +76,5 @@ test('report switches reuse the dashboard and preserve the analytical table and 
   assert.equal(nodes.get('#financialDifference').hidden,false);
   vm.runInContext("setReport('financial')",context);
   await vm.runInContext('loadBigQuery()',context);
-  assert.equal(nodes.get('#totalGMV').textContent,'R$ 575');
+  assert.equal(nodes.get('#totalGMV').textContent,'R$ 500');
 });

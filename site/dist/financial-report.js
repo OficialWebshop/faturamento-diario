@@ -3,10 +3,9 @@
   if(typeof module==='object'&&module.exports)module.exports=api;
   if(root)root.FINANCIAL_REPORT=api;
 })(typeof globalThis!=='undefined'?globalThis:this,function(){
-  const statuses=new Set(['FATURADO','APROVADO','PREPARANDO PARA ENVIO','ENVIADO','ENTREGUE','PRONTO PARA ENVIO','DADOS INCOMPLETOS','NAO ENTREGUE']);
+  const statuses=new Set(['FATURADO','APROVADO','PREPARANDO ENVIO','ENVIADO','ENTREGUE','PRONTO PARA ENVIO']);
   function financialSale(order){
-    let status=String(order?.situacao || '').normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim().replace(/\s+/g,' ').toUpperCase();
-    if(status==='PREPARANDO ENVIO')status='PREPARANDO PARA ENVIO';
+    const status=String(order?.situacao || '').normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim().replace(/\s+/g,' ').toUpperCase();
     return statuses.has(status);
   }
   function summarize(analytics){
