@@ -300,33 +300,42 @@ function updateGoalRevealControl(){
   revealBtn.hidden=!active;
   if(!active){
     revealBtn.disabled=true;
-    revealBtn.classList.remove('ready','revealed','loading');
+    revealBtn.classList.remove('unlockable','ready','revealed','loading');
     return;
   }
   if(revealingGoal)return;
   if(goalRevealState?.revealed){
     revealBtn.disabled=true;
-    revealBtn.classList.remove('ready');
+    revealBtn.classList.remove('unlockable','ready');
     revealBtn.classList.add('revealed');
     if(icon)icon.textContent='✓';
     if(label)label.textContent='Painel liberado';
     revealBtn.title='Valores liberados em 27/11 — painel atualizando normalmente';
     return;
   }
-  if(goalRevealState?.canReveal){
+  if(goalRevealState?.canReveal&&goalRevealState?.goalReached){
     revealBtn.disabled=false;
-    revealBtn.classList.remove('revealed');
+    revealBtn.classList.remove('unlockable','revealed');
     revealBtn.classList.add('ready');
     if(icon)icon.textContent='🏆';
     if(label)label.textContent='Liberar valores';
-    revealBtn.title='Valores travados a partir de R$ 690 mil! Clique para liberar e atualizar normalmente';
+    revealBtn.title='Meta diária batida! Clique para liberar e mostrar a meta batida';
+    return;
+  }
+  if(goalRevealState?.canReveal){
+    revealBtn.disabled=false;
+    revealBtn.classList.remove('ready','revealed');
+    revealBtn.classList.add('unlockable');
+    if(icon)icon.textContent='🔓';
+    if(label)label.textContent='Liberar valores';
+    revealBtn.title='Valores travados a partir de R$ 700 mil (o botão fica verde ao bater a meta diária)';
     return;
   }
   revealBtn.disabled=true;
-  revealBtn.classList.remove('ready','revealed');
+  revealBtn.classList.remove('unlockable','ready','revealed');
   if(icon)icon.textContent='🔒';
-  if(label)label.textContent='Aguardando R$ 690 mil';
-  revealBtn.title='Trava os valores a partir de R$ 690 mil hoje (27/11) até clicar para liberar';
+  if(label)label.textContent='Aguardando R$ 700 mil';
+  revealBtn.title='Trava os valores a partir de R$ 700 mil hoje (27/11) até clicar para liberar';
 }
 
 async function revealDailyGoal(){

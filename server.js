@@ -6,6 +6,7 @@ const { brDateIso, getDailyTargetValue } = require('./site/dist/daily-targets.js
 const { goalState, dayComparison, retainDayClosings } = require('./site/dist/dashboard-data.js');
 const { financialSale, summarize: summarizeFinancial, projectSnapshot: financialSnapshot } = require('./site/dist/financial-report.js');
 const {
+  GOAL_LOCK_THRESHOLD,
   isGoalRevealActive,
   createEmptyGoalRevealState,
   recordPreGoalSnapshots,
@@ -111,15 +112,20 @@ function writeDailyState(state) {
 }
 
 function readGoalRevealState(dataDate = brDate()) {
-  if (process.env.READ_ONLY_PREVIEW === '1' && previewGoalRevealState?.dataDate === dataDate) {
+  if (
+    process.env.READ_ONLY_PREVIEW === '1' &&
+    previewGoalRevealState?.dataDate === dataDate &&
+    Number(previewGoalRevealState?.lockThreshold || 0) === GOAL_LOCK_THRESHOLD
+  ) {
     return previewGoalRevealState;
   }
   const raw = readJson(GOAL_REVEAL_STATE_FILE, null);
-  if (!raw || typeof raw !== 'object' || raw.dataDate !== dataDate) {
-    return createEmptyGoalRevealState(dataDate);
+  if (!raw || typeof raw !== 'object' || raw.dataDate !== dataDate || Number(raw.lockThreshold || 0) !== GOAL_LOCK_THRESHOLD) {
+    return createEmptyGoalRevealState(dataDate, GOAL_LOCK_THRESHOLD);
   }
   return {
     dataDate,
+    lockThreshold: GOAL_LOCK_THRESHOLD,
     revealed: Boolean(raw.revealed),
     revealedAt: raw.revealedAt || null,
     preGoalSnapshots: Array.isArray(raw.preGoalSnapshots) ? raw.preGoalSnapshots : []
@@ -1456,12 +1462,13 @@ const server = http.createServer(async (req, res) => {
     const check = canTriggerGoalReveal(all, { requestedDate: targetDate, todayDate: today, target });
     const currentState = readGoalRevealState(targetDate);
     if (!currentState.revealed && !check.lockReached) {
-      return json(res, 409, { error: 'O travamento ainda não foi acionado (faturamento abaixo de R$ 690.000).' });
+      return json(res, 409, { error: 'O travamento ainda não foi acionado (faturamento abaixo de R$ 700.000).' });
     }
     if (!currentState.revealed) {
       writeGoalRevealState({
         ...currentState,
         dataDate: targetDate,
+        lockThreshold: GOAL_LOCK_THRESHOLD,
         revealed: true,
         revealedAt: new Date().toISOString()
       });

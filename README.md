@@ -51,8 +51,8 @@ As metas diárias de GMV da operação para novembro de 2026 (`01/11/2026` a `30
 
 Exclusivamente em `27/11/2026` (quando a data atual e a data exibida no painel são `2026-11-27`), o botão **Importar base** no topo da página é substituído pelo botão de liberação (`#goalRevealBtn`):
 
-- **Abaixo de R$ 690.000 (`GMV < 690000`):** o painel atualiza normalmente e salva o último estado anterior ao travamento em `data/goal-reveal-state.json` (ignorado pelo Git), mantendo o botão travado (`Aguardando R$ 690 mil`).
-- **A partir de R$ 690.000 (`GMV >= 690000`):** o backend continua sincronizando e salvando os dados reais no SQLite, mas mantém os valores exibidos travados no último snapshot abaixo de `R$ 690.000` (`goalReveal.locked = true`) e libera o botão no topo (`Liberar valores`).
+- **Abaixo de R$ 700.000 (`GMV < 700000`):** o painel atualiza normalmente e salva o último estado anterior ao travamento em `data/goal-reveal-state.json` (ignorado pelo Git), mantendo o botão travado (`Aguardando R$ 700 mil`).
+- **A partir de R$ 700.000 (`GMV >= 700000`):** o backend continua sincronizando e salvando os dados reais no SQLite, mas mantém os valores exibidos travados no último snapshot abaixo de `R$ 700.000` (`goalReveal.locked = true`) e libera o botão no topo (`Liberar valores`) em cor neutra; o botão fica **verde** somente quando a meta diária (`R$ 717.684`) é batida (`goalReveal.goalReached = true`).
 - **Ao clicar em `Liberar valores`:** envia `POST /api/goal-reveal`, libera imediatamente os valores reais no painel (incluindo a meta batida quando atingida) e o painel continua atualizando normalmente pelo restante do dia.
 - **Em qualquer outra data (históricas ou a partir de `28/11/2026`):** o travamento é desativado automaticamente e o botão **Importar base** volta ao topo da página.
 

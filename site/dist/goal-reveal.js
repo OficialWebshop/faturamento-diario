@@ -8,7 +8,7 @@
   }
 })(typeof globalThis !== 'undefined' ? globalThis : this, function () {
   const GOAL_REVEAL_DATE = '2026-11-27';
-  const GOAL_LOCK_THRESHOLD = 690000;
+  const GOAL_LOCK_THRESHOLD = 700000;
 
   function num(value) {
     const parsed = Number(value || 0);
@@ -23,13 +23,18 @@
     return Object.values(snapshot?.channels || {}).reduce((sum, value) => sum + num(value), 0);
   }
 
-  function createEmptyGoalRevealState(dataDate = GOAL_REVEAL_DATE) {
+  function createEmptyGoalRevealState(dataDate = GOAL_REVEAL_DATE, lockThreshold = GOAL_LOCK_THRESHOLD) {
     return {
       dataDate,
+      lockThreshold: num(lockThreshold),
       revealed: false,
       revealedAt: null,
       preGoalSnapshots: []
     };
+  }
+
+  function isMatchingState(state, dataDate, threshold) {
+    return Boolean(state && state.dataDate === dataDate && num(state.lockThreshold) === num(threshold));
   }
 
   function stripGoalReached(snapshot) {
@@ -175,9 +180,9 @@
     if (!isGoalRevealActive(dataDate, todayDate) || !(threshold > 0)) {
       return { nextState: null, stateChanged: false };
     }
-    const currentState = state && state.dataDate === dataDate
+    const currentState = isMatchingState(state, dataDate, threshold)
       ? state
-      : createEmptyGoalRevealState(dataDate);
+      : createEmptyGoalRevealState(dataDate, threshold);
     if (currentState.revealed) {
       return { nextState: null, stateChanged: false };
     }
@@ -196,6 +201,7 @@
       nextState: {
         ...currentState,
         dataDate,
+        lockThreshold: threshold,
         preGoalSnapshots: sanitized
       },
       stateChanged: true
@@ -236,9 +242,9 @@
     const realTotalGmv = latest ? snapshotTotalGmv(latest) : 0;
     const lockReached = Boolean(latest && realTotalGmv >= threshold);
     const realGoalReached = Boolean(latest && goalTarget > 0 && realTotalGmv >= goalTarget);
-    const currentState = state && state.dataDate === requestedDate
+    const currentState = isMatchingState(state, requestedDate, threshold)
       ? state
-      : createEmptyGoalRevealState(requestedDate);
+      : createEmptyGoalRevealState(requestedDate, threshold);
 
     if (currentState.revealed) {
       return {
@@ -312,6 +318,7 @@
       nextState = {
         ...currentState,
         dataDate: requestedDate,
+        lockThreshold: threshold,
         preGoalSnapshots: frozenDaySnapshots
       };
       stateChanged = true;
